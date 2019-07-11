@@ -1,0 +1,2 @@
+-conditionalpackage: org.osgi.util.converter,\
+  org.osgi.util.function

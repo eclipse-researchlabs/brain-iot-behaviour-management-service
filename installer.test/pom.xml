@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.paremus.brain.iot</groupId>
+        <artifactId>behaviour-management-service</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>installer.test</artifactId>
+
+    <description>The bundler-installer integration test - built using OSGi enRoute R7</description>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>org.osgi.enroute</groupId>
+            <artifactId>osgi-api</artifactId>
+            <type>pom</type>
+        </dependency>
+        <dependency>
+            <groupId>com.paremus.brain.iot</groupId>
+            <artifactId>eventing.api</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.osgi.enroute</groupId>
+            <artifactId>test-bundles</artifactId>
+            <type>pom</type>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.osgi.enroute</groupId>
+            <artifactId>impl-index</artifactId>
+            <type>pom</type>
+        </dependency>
+        <dependency>
+            <groupId>org.osgi.enroute</groupId>
+            <artifactId>debug-bundles</artifactId>
+            <type>pom</type>
+        </dependency>
+
+        <!--resolution dependencies -->
+        <dependency>
+            <groupId>com.paremus.brain.iot</groupId>
+            <artifactId>eventing.impl</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.paremus.brain.iot</groupId>
+            <artifactId>installer.impl</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.paremus.brain.iot</groupId>
+            <artifactId>resolver.impl</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.paremus.brain.iot</groupId>
+            <artifactId>management.impl</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.felix</groupId>
+            <artifactId>org.apache.felix.log</artifactId>
+            <version>1.2.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.felix</groupId>
+            <artifactId>org.apache.felix.resolver</artifactId>
+            <version>1.10.1</version>
+        </dependency>
+        <dependency>
+            <groupId>biz.aQute.bnd</groupId>
+            <artifactId>biz.aQute.repository</artifactId>
+            <version>${bnd.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>biz.aQute.bnd</groupId>
+            <artifactId>biz.aQute.bndlib</artifactId>
+            <version>${bnd.version}</version>
+        </dependency>
+
+        <!-- webconsole -->
+        <dependency>
+            <groupId>org.apache.felix</groupId>
+            <artifactId>org.apache.felix.webconsole</artifactId>
+            <version>4.3.8</version>
+            <classifier>all</classifier>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.felix</groupId>
+            <artifactId>org.apache.felix.webconsole.plugins.ds</artifactId>
+            <version>2.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.felix</groupId>
+            <artifactId>org.apache.felix.http.servlet-api</artifactId>
+            <version>1.1.2</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.felix</groupId>
+            <artifactId>org.apache.felix.http.jetty</artifactId>
+            <version>4.0.8</version>
+        </dependency>
+
+      </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>biz.aQute.bnd</groupId>
+                <artifactId>bnd-maven-plugin</artifactId>
+                <configuration>
+                    <bndfile>integration-test.bndrun</bndfile>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>biz.aQute.bnd</groupId>
+                <artifactId>bnd-indexer-maven-plugin</artifactId>
+                <configuration>
+                    <includeJar>true</includeJar>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>biz.aQute.bnd</groupId>
+                <artifactId>bnd-testing-maven-plugin</artifactId>
+                <configuration>
+                    <bndruns>
+                        <bndrun>integration-test.bndrun</bndrun>
+                    </bndruns>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>biz.aQute.bnd</groupId>
+                <artifactId>bnd-resolver-maven-plugin</artifactId>
+                <configuration>
+                    <bndruns>
+                        <bndrun>integration-test.bndrun</bndrun>
+                    </bndruns>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -1,0 +1,53 @@
+# integration-test.bndrun
+
+-standalone: target/index.xml
+
+-resolve.effective: active
+
+# Run all integration tests which are named xyzTest
+Test-Cases: ${classes;CONCRETE;PUBLIC;NAMED;*Test}
+
+# Used by Objenesis/Mockito and not actually optional
+-runsystempackages: sun.reflect
+
+-runfw: org.eclipse.osgi
+-runee: JavaSE-1.8
+
+-runvm: \
+ -Dinstaller.test.repo=${.}/../../BRAIN-IoT/SmartBehaviourEventBus/eventing-example/single-framework-example/target/index.xml,\
+ -Dinstaller.test.resources=${.}/src/main/resources,\
+ -Dlogback.configurationFile=${.}/logback.xml,\
+ -Djava.util.logging.config.file=${.}/logging.properties,\
+ -Dinstaller.test.pause=false
+
+-runrequires: \
+	bnd.identity;id='com.paremus.brain.iot.installer.test',\
+	bnd.identity;id='com.paremus.brain.iot.installer.impl',\
+	bnd.identity;id='com.paremus.brain.iot.management.impl',\
+	bnd.identity;id='com.paremus.brain.iot.eventing.impl',\
+	bnd.identity;id='org.apache.felix.log'
+
+webconsole:\
+	bnd.identity;id='org.apache.felix.webconsole',\
+	bnd.identity;id='org.apache.felix.webconsole.plugins.ds'
+
+-runbundles: \
+	biz.aQute.bndlib;version='[4.2.0,4.2.1)',\
+	biz.aQute.repository;version='[4.2.0,4.2.1)',\
+	ch.qos.logback.classic;version='[1.2.3,1.2.4)',\
+	ch.qos.logback.core;version='[1.2.3,1.2.4)',\
+	com.paremus.brain.iot.eventing.api;version='[0.0.1,0.0.2)',\
+	com.paremus.brain.iot.eventing.impl;version='[0.0.1,0.0.2)',\
+	com.paremus.brain.iot.installer.api;version='[0.0.1,0.0.2)',\
+	com.paremus.brain.iot.installer.impl;version='[0.0.1,0.0.2)',\
+	com.paremus.brain.iot.installer.test;version='[0.0.1,0.0.2)',\
+	com.paremus.brain.iot.management.api;version='[0.0.1,0.0.2)',\
+	com.paremus.brain.iot.management.impl;version='[0.0.1,0.0.2)',\
+	com.paremus.brain.iot.resolver.impl;version='[0.0.1,0.0.2)',\
+	org.apache.felix.configadmin;version='[1.9.8,1.9.9)',\
+	org.apache.felix.log;version='[1.2.0,1.2.1)',\
+	org.apache.felix.scr;version='[2.1.10,2.1.11)',\
+	org.apache.servicemix.bundles.junit;version='[4.12.0,4.12.1)',\
+	org.osgi.util.function;version='[1.1.0,1.1.1)',\
+	org.osgi.util.pushstream;version='[1.0.0,1.0.1)',\
+	slf4j.api;version='[1.7.25,1.7.26)'

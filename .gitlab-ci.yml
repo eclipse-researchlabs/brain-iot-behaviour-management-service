@@ -1,0 +1,38 @@
+# BRAIN-IoT BehaviourManagementService .gitlab-ci.yml
+# https://docs.gitlab.com/ce/ci/yaml/
+
+# docker image with maven 3 and java 11
+image: maven:3-jdk-11
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+  MAVEN_CLI_OPTS: "--batch-mode -s .m2/settings.xml"
+  MAVEN_DEPLOY_OPTS: "-DaltReleaseDeploymentRepository=brain-iot-releases::default::https://nexus.repository-pert.ismb.it/repository/maven-releases -DaltSnapshotDeploymentRepository=brain-iot-snapshots::default::https://nexus.repository-pert.ismb.it/repository/maven-snapshots"
+#  CI_DEBUG_TRACE: "true"
+
+bms-build:
+  stage: build
+  script:
+    - mvn $MAVEN_CLI_OPTS compile
+
+bms-test:
+  stage: test
+  script:
+    - mvn $MAVEN_CLI_OPTS verify
+  artifacts:
+    paths:
+    - installer.impl/target/surefire-reports/*.txt
+    when: always
+    expire_in: 1 day
+
+bms-deploy:
+  stage: deploy
+  script:
+    - mvn $MAVEN_CLI_OPTS $MAVEN_DEPLOY_OPTS clean package org.apache.maven.plugins:maven-deploy-plugin:2.8.2:deploy
+  artifacts:
+    paths:
+    - installer.impl/target/surefire-reports/*.txt
+    when: always
+    expire_in: 1 day
+
+#end

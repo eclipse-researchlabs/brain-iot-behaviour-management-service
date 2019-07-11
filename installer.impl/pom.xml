@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <artifactId>behaviour-management-service</artifactId>
+        <groupId>com.paremus.brain.iot</groupId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <groupId>com.paremus.brain.iot</groupId>
+    <artifactId>installer.impl</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+
+    <description>The installer.impl DS component - built using OSGi enRoute R7</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.osgi.enroute</groupId>
+            <artifactId>osgi-api</artifactId>
+            <type>pom</type>
+        </dependency>
+
+        <dependency>
+            <groupId>com.paremus.brain.iot</groupId>
+            <artifactId>eventing.api</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.paremus.brain.iot</groupId>
+            <artifactId>installer.api</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
+            <groupId>biz.aQute.bnd</groupId>
+            <artifactId>biz.aQute.bndlib</artifactId>
+            <version>${bnd.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>biz.aQute.bnd</groupId>
+            <artifactId>biz.aQute.repository</artifactId>
+            <version>${bnd.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.osgi.enroute</groupId>
+            <artifactId>test-bundles</artifactId>
+            <type>pom</type>
+        </dependency>
+
+        <dependency>
+            <!-- override old version in enroute test-bundles-->
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>2.28.2</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Expected to inherit configuration from a parent enRoute
+                pom. This includes -contract definitions and maven-jar-plugin setup -->
+            <plugin>
+                <groupId>biz.aQute.bnd</groupId>
+                <artifactId>bnd-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
