@@ -38,6 +38,28 @@
                 <enabled>true</enabled>
             </snapshots>
         </repository>
+        <repository>
+            <id>brain-iot-releases</id>
+            <name>BRAIN-IoT Releases</name>
+            <url>https://nexus.repository-pert.ismb.it/repository/maven-releases/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <repository>
+            <id>brain-iot-snapshots</id>
+            <name>BRAIN-IoT Snapshots</name>
+            <url>https://nexus.repository-pert.ismb.it/repository/maven-snapshots/</url>
+            <releases>
+                <enabled>false</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
     </repositories>
 
     <pluginRepositories>
