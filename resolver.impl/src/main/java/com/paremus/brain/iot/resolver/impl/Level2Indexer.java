@@ -5,6 +5,7 @@ import aQute.bnd.osgi.repository.XMLResourceGenerator;
 import aQute.bnd.repository.osgi.OSGiRepository;
 import aQute.bnd.service.url.URLConnector;
 import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
+import org.osgi.resource.Capability;
 import org.osgi.resource.Requirement;
 import org.osgi.resource.Resource;
 
@@ -34,8 +35,7 @@ public class Level2Indexer {
         if (argv.size() < 2) {
             System.err.println("Usage: Level2Indexer output.xml index-URLs..");
             System.exit(1);
-        }
-        else {
+        } else {
             File out = new File(argv.remove(0));
             URI root = out.getCanonicalFile().getParentFile().toURI();
             index2(root, out, argv);
@@ -52,39 +52,45 @@ public class Level2Indexer {
 
         List<Resource> index2Resources = new ArrayList<>();
 
+
         BasicRegistry registry = new BasicRegistry();
         registry.put(URLConnector.class, new JarURLConnector());
         registry.put(HttpClient.class, new HttpClient());
 
-        for (String index : indexes) {
-            File file = new File(index);
-            if (file.exists()) {
-                index = file.getCanonicalFile().toURI().toString();
-            }
+        for (String idx : indexes) {
+            File file = new File(idx);
+            String index = file.exists() ? file.getCanonicalFile().toURI().toString() : idx;
             Map<String, String> repoProps = new HashMap<>();
             repoProps.put("locations", index);
             OSGiRepository repo = new OSGiRepository();
             repo.setRegistry(registry);
             repo.setProperties(repoProps);
 
-            ResourceImpl resource = new ResourceImpl();
+            final ResourceImpl[] resource = new ResourceImpl[1];
+            final Capability[] currentId = new Capability[1];
 
             repo.findProviders(brainIotReqs).values().forEach(caps -> caps.stream()
-                    // bnd CapabilityImpl doesn't implement equals, so distinct doesn't work
-                    .map(c -> CapabilityImpl.copy(c, null)).distinct()
                     .filter(c -> !c.getAttributes().isEmpty() || !c.getDirectives().isEmpty())
-                    .forEach(c -> {
-                        System.out.println("Cap :" + c);
-                        resource.addCapability(c);
+                    .distinct()
+                    .forEach(cap -> {
+                        System.out.println("Cap :" + cap);
+                        List<Capability> ids = cap.getResource().getCapabilities("osgi.identity");
+                        if (!ids.isEmpty()) {
+                            Capability id = CapabilityImpl.copy(ids.get(0), null);
+                            if (!id.equals(currentId[0])) {
+                                if (resource[0] != null) {
+                                    index2Resources.add(resource[0]);
+                                }
+                                resource[0] = compositeResource(index);
+                                resource[0].addCapability(id);
+                                currentId[0] = id;
+                            }
+                            resource[0].addCapability(cap);
+                        }
                     }));
 
-            if (!resource.getCapabilities(namespace).isEmpty()) {
-                Map<String, Object> attribs = new HashMap<>();
-                attribs.put("mime", ResolverContext.MIME_INDEX);
-                attribs.put("url", root.relativize(new URI(index)).toString());
-                CapabilityImpl content = new CapabilityImpl("osgi.content", Collections.emptyMap(), attribs, resource);
-                resource.addCapability(content);
-                index2Resources.add(resource);
+            if (resource[0] != null) {
+                index2Resources.add(resource[0]);
             }
         }
 
@@ -92,5 +98,15 @@ public class Level2Indexer {
         repository.name("Brain-IOT level-1 repository");
         repository.resources(index2Resources);
         repository.save(index2.getAbsoluteFile());
+    }
+
+    private static ResourceImpl compositeResource(String index) {
+        ResourceImpl resource = new ResourceImpl();
+        Map<String, Object> attribs = new HashMap<>();
+        attribs.put("mime", ResolverContext.MIME_INDEX);
+        attribs.put("url", index);
+        CapabilityImpl content = new CapabilityImpl("osgi.content", Collections.emptyMap(), attribs, resource);
+        resource.addCapability(content);
+        return resource;
     }
 }
