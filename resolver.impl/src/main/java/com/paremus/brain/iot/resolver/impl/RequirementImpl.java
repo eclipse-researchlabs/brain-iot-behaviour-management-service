@@ -11,7 +11,7 @@ import org.osgi.resource.Resource;
 import java.util.Map;
 import java.util.Map.Entry;
 
-class RequirementImpl extends CapReqBase implements Requirement {
+public class RequirementImpl extends CapReqBase implements Requirement {
 
     public static RequirementImpl copy(Requirement req, Resource resource) {
         return new RequirementImpl(req.getNamespace(), req.getDirectives(), req.getAttributes(), resource);

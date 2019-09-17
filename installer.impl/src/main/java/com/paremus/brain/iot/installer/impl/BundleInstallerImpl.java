@@ -46,7 +46,10 @@ import static org.osgi.framework.Bundle.INSTALLED;
 import static org.osgi.framework.Bundle.RESOLVED;
 
 @Component
-@SmartBehaviourDefinition(consumed = {InstallRequestDTO.class})
+@SmartBehaviourDefinition(consumed = {InstallRequestDTO.class},
+        author = "Paremus", name = "[Brain-IoT] Bundle Installer Service",
+        description = "Resolves requirements using supplied indexes and installs all dependencies."
+)
 public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO>, Runnable {
 
     @Reference(service = LoggerFactory.class, cardinality = ReferenceCardinality.OPTIONAL)

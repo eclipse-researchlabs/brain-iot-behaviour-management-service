@@ -55,8 +55,9 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
         resourceDir = new File(resources);
 
         // configure last_resort handler
+        // index2.xml is a 2-tier index
         Dictionary<String, Object> props = new Hashtable<>();
-        URI index1 = (new File(resourceDir, "index-0.0.1.xml")).toURI();
+        URI index1 = (new File(resourceDir, "index2.xml")).toURI();
         props.put("indexes", index1.toString());
 
         Configuration config = deps.configAdmin.getConfiguration(ManagementConstants.PID, "?");

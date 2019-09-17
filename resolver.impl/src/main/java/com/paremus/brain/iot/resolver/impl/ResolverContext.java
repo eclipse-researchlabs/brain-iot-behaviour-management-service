@@ -29,16 +29,20 @@ import java.net.URI;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 
-class ResolverContext extends ResolveContext {
+public class ResolverContext extends ResolveContext {
+
+    public static final String MIME_BUNDLE = "application/vnd.osgi.bundle";
+    public static final String MIME_INDEX = "application/vnd.osgi.repository+xml";
 
     private static final String INITIAL_RESOURCE_CAPABILITY_NAMESPACE = "__initial";
-    private static final String MIME_BUNDLE = "application/vnd.osgi.bundle";
 
     private final BundleContext bundleContext;
 
@@ -57,7 +61,7 @@ class ResolverContext extends ResolveContext {
 
     private final Map<Resource, Wiring> wiringMap;
 
-    ResolverContext(BundleContext bundleContext, String name, List<URI> indexes, Collection<Requirement> requirements,  Map<Resource, Wiring> wiringMap) throws Exception {
+    ResolverContext(BundleContext bundleContext, String name, List<URI> indexes, Collection<Requirement> requirements, Map<Resource, Wiring> wiringMap) throws Exception {
         this.bundleContext = bundleContext;
         this.wiringMap = (wiringMap != null) ? wiringMap : getWirings(bundleContext);
 
@@ -81,7 +85,30 @@ class ResolverContext extends ResolveContext {
             repo.setRegistry(registry);
             repo.setProperties(repoProps);
 
-            this.repositories.put(indexUri, repo);
+            Set<String> level2indexes = new HashSet<>();
+
+            // Check for level2 indexes
+            repo.findProviders(requirements).values().forEach(cc -> cc.forEach(cap -> {
+                cap.getResource().getCapabilities("osgi.content").stream()
+                        .filter(c -> MIME_INDEX.equals(c.getAttributes().get("mime")))
+                        .map(c -> (String) c.getAttributes().get("url"))
+                        .findFirst()
+                        .ifPresent(level2indexes::add);
+            }));
+
+            if (level2indexes.isEmpty()) {
+                this.repositories.put(indexUri, repo);
+            } else {
+                //System.out.printf("XXX replacing level-1 index(%s) with: %s\n", indexUri, level2indexes);
+                for (String index : level2indexes) {
+                    repoProps = new HashMap<>();
+                    repoProps.put("locations", index);
+                    OSGiRepository repo2 = new OSGiRepository();
+                    repo2.setRegistry(registry);
+                    repo2.setProperties(repoProps);
+                    this.repositories.put(new URI(index), repo2);
+                }
+            }
         }
     }
 

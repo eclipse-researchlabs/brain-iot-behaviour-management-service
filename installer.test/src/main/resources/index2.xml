@@ -1,0 +1,15 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<repository xmlns="http://www.osgi.org/xmlns/repository/v1.0.0" name="Brain-IOT level-1 repository" increment="1568720457058">
+  <resource>
+    <capability namespace="eu.brain.iot.behaviour">
+      <attribute name="consumed" value="com.paremus.brain.iot.example.sensor.api.SensorReadingDTO" type="List&lt;String&gt;"/>
+    </capability>
+    <capability namespace="eu.brain.iot.behaviour">
+      <attribute name="consumed" value="com.paremus.brain.iot.example.light.api.LightCommand,com.paremus.brain.iot.example.light.api.LightQuery" type="List&lt;String&gt;"/>
+    </capability>
+    <capability namespace="osgi.content">
+      <attribute name="url" value="index-0.0.1.xml"/>
+      <attribute name="mime" value="application/vnd.osgi.repository+xml"/>
+    </capability>
+  </resource>
+</repository>
