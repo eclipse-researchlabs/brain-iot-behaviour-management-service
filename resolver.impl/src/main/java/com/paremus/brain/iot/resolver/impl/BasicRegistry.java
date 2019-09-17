@@ -12,11 +12,11 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
-class BasicRegistry implements Registry {
+public class BasicRegistry implements Registry {
 
     private final Map<Class<?>, List<Object>> plugins = new HashMap<>();
 
-    synchronized <T> BasicRegistry put(Class<T> clazz, T plugin) {
+    public synchronized <T> BasicRegistry put(Class<T> clazz, T plugin) {
         List<Object> list = plugins.get(clazz);
         if (list == null) {
             list = new LinkedList<>();

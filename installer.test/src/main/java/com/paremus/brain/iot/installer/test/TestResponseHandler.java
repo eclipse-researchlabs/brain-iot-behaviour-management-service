@@ -13,7 +13,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Component
-@SmartBehaviourDefinition(consumed = {InstallResponseDTO.class})
+@SmartBehaviourDefinition(consumed = {InstallResponseDTO.class},
+        author = "Paremus", name = "[Brain-IoT] Bundle Installer Test",
+        description = " Test response handler"
+)
 public class TestResponseHandler implements SmartBehaviour<InstallResponseDTO>, TestResponser {
     private List<SmartBehaviour<InstallResponseDTO>> listeners = new ArrayList<>();
 

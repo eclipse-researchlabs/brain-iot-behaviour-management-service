@@ -9,6 +9,7 @@ import org.osgi.resource.Resource;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 class CapReqBase {
 
@@ -40,4 +41,19 @@ class CapReqBase {
         return resource;
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        CapReqBase that = (CapReqBase) o;
+        return namespace.equals(that.namespace) &&
+                Objects.equals(directives, that.directives) &&
+                Objects.equals(attribs, that.attribs) &&
+                Objects.equals(resource, that.resource);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(namespace, directives, attribs, resource);
+    }
 }

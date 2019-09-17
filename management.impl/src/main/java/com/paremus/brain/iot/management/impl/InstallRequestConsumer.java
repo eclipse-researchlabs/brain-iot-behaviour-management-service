@@ -7,15 +7,14 @@ package com.paremus.brain.iot.management.impl;
 import com.paremus.brain.iot.management.api.ManagementInstallRequestDTO;
 import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
 import eu.brain.iot.eventing.api.SmartBehaviour;
-import eu.brain.iot.installer.api.InstallResponseDTO;
-import org.osgi.framework.ServiceReference;
-import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.ConfigurationPolicy;
 import org.osgi.service.component.annotations.Reference;
 
 @Component(configurationPolicy = ConfigurationPolicy.REQUIRE)
-@SmartBehaviourDefinition(consumed = {ManagementInstallRequestDTO.class})
+@SmartBehaviourDefinition(consumed = {ManagementInstallRequestDTO.class},
+        author = "Paremus", name = "[Brain-IoT] Behaviour Management Service",
+        description = "Install request consumer")
 public class InstallRequestConsumer implements SmartBehaviour<ManagementInstallRequestDTO> {
 
     @Reference

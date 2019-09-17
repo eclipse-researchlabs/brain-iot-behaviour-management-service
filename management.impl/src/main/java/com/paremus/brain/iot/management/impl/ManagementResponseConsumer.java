@@ -7,13 +7,15 @@ package com.paremus.brain.iot.management.impl;
 import com.paremus.brain.iot.management.api.ManagementResponseDTO;
 import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
 import eu.brain.iot.eventing.api.SmartBehaviour;
-import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.ConfigurationPolicy;
 import org.osgi.service.component.annotations.Reference;
 
 @Component(configurationPolicy = ConfigurationPolicy.REQUIRE)
-@SmartBehaviourDefinition(consumed = {ManagementResponseDTO.class})
+@SmartBehaviourDefinition(consumed = {ManagementResponseDTO.class},
+        author = "Paremus", name = "[Brain-IoT] Behaviour Management Service",
+        description = "Management response consumer"
+)
 public class ManagementResponseConsumer implements SmartBehaviour<ManagementResponseDTO> {
 
     @Reference

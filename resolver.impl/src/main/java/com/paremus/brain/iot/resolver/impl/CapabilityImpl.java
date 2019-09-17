@@ -7,10 +7,11 @@ package com.paremus.brain.iot.resolver.impl;
 import org.osgi.resource.Capability;
 import org.osgi.resource.Resource;
 
+import java.sql.SQLSyntaxErrorException;
 import java.util.Map;
 import java.util.Map.Entry;
 
-class CapabilityImpl extends CapReqBase implements Capability {
+public class CapabilityImpl extends CapReqBase implements Capability {
 
     public static CapabilityImpl copy(Capability cap, Resource resource) {
         return new CapabilityImpl(cap.getNamespace(), cap.getDirectives(), cap.getAttributes(), resource);
@@ -44,4 +45,13 @@ class CapabilityImpl extends CapReqBase implements Capability {
         return sb.toString();
     }
 
+    @Override
+    public boolean equals(Object obj) {
+        return super.equals(obj);
+    }
+
+    @Override
+    public int hashCode() {
+        return super.hashCode();
+    }
 }

@@ -13,7 +13,7 @@ import java.net.JarURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
 
-class JarURLConnector implements URLConnector {
+public class JarURLConnector implements URLConnector {
 
     @Override
     public TaggedData connectTagged(URL url) throws Exception {

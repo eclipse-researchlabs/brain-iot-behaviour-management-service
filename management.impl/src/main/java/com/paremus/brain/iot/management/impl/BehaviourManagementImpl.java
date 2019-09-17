@@ -36,8 +36,6 @@ import org.osgi.service.log.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Dictionary;
@@ -63,7 +61,9 @@ import static org.osgi.util.converter.Converters.standardConverter;
 @Component(name = ManagementConstants.PID,
         service = {BehaviourManagementImpl.class, SmartBehaviour.class},
         configurationPolicy = ConfigurationPolicy.REQUIRE)
-@SmartBehaviourDefinition(consumed = {ManagementBidRequestDTO.class})
+@SmartBehaviourDefinition(consumed = {ManagementBidRequestDTO.class},
+        author = "Paremus", name = "[Brain-IoT] Behaviour Management Service",
+        description = "Implements the Behaviour Management Service")
 public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequestDTO> {
     @interface Config {
         String[] indexes();
