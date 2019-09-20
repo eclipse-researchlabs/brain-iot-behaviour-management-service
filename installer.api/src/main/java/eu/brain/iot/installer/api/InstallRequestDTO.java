@@ -17,17 +17,17 @@ import java.util.Map;
 public class InstallRequestDTO extends BrainIoTEvent {
 
     /**
-     * a friendly name for the smart behaviour
+     * A friendly name for the smart behaviour
      */
     public String name;
 
     /**
-     * The smart bev=haviour symbolic name.
+     * The symbolic name for the smart behaviour
      */
     public String symbolicName;
 
     /**
-     * the version of the smart behaviour
+     * The version of the smart behaviour
      */
     public String version;
 

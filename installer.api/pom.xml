@@ -10,7 +10,6 @@
 
     <groupId>com.paremus.brain.iot</groupId>
     <artifactId>installer.api</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
 
     <description>The installer.api API bundle - built using OSGi enRoute R7</description>
 

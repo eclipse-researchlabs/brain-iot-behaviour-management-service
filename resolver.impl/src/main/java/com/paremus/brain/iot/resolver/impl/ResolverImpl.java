@@ -5,8 +5,11 @@
 package com.paremus.brain.iot.resolver.impl;
 
 import aQute.bnd.osgi.resource.RequirementBuilder;
+import eu.brain.iot.installer.api.BehaviourDTO;
 import eu.brain.iot.installer.api.InstallResolver;
 import org.osgi.framework.BundleContext;
+import org.osgi.framework.Filter;
+import org.osgi.framework.InvalidSyntaxException;
 import org.osgi.resource.Requirement;
 import org.osgi.resource.Resource;
 import org.osgi.resource.Wire;
@@ -117,6 +120,12 @@ public class ResolverImpl implements InstallResolver {
         }
 
         return reqBuilder.buildSyntheticRequirement();
+    }
+
+    @Override
+    public Collection<BehaviourDTO> findBehaviours(List<String> indexes, String ldapFilter) throws Exception {
+        Filter filter = ldapFilter != null ? bundleContext.createFilter(ldapFilter) : null;
+        return Level2Indexer.findBrainIotResources(indexes, filter);
     }
 
 }

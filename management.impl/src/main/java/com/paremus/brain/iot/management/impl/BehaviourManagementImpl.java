@@ -5,14 +5,15 @@
 
 package com.paremus.brain.iot.management.impl;
 
+import com.paremus.brain.iot.management.api.BehaviourManagement;
 import com.paremus.brain.iot.management.api.ManagementBidRequestDTO;
-import com.paremus.brain.iot.management.api.ManagementConstants;
 import com.paremus.brain.iot.management.api.ManagementInstallRequestDTO;
 import com.paremus.brain.iot.management.api.ManagementRequestDTO;
 import com.paremus.brain.iot.management.api.ManagementResponseDTO;
 import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
 import eu.brain.iot.eventing.api.EventBus;
 import eu.brain.iot.eventing.api.SmartBehaviour;
+import eu.brain.iot.installer.api.BehaviourDTO;
 import eu.brain.iot.installer.api.InstallRequestDTO;
 import eu.brain.iot.installer.api.InstallRequestDTO.InstallAction;
 import eu.brain.iot.installer.api.InstallResolver;
@@ -36,15 +37,7 @@ import org.osgi.service.log.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Dictionary;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Hashtable;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -58,13 +51,18 @@ import static com.paremus.brain.iot.management.api.ManagementResponseDTO.Respons
 import static com.paremus.brain.iot.management.api.ManagementResponseDTO.ResponseCode.BID;
 import static org.osgi.util.converter.Converters.standardConverter;
 
-@Component(name = ManagementConstants.PID,
-        service = {BehaviourManagementImpl.class, SmartBehaviour.class},
-        configurationPolicy = ConfigurationPolicy.REQUIRE)
+@Component(configurationPid = BehaviourManagementImpl.PID,
+        configurationPolicy = ConfigurationPolicy.REQUIRE,
+        service = {BehaviourManagementImpl.class, BehaviourManagement.class, SmartBehaviour.class},
+        property = {Constants.SERVICE_EXPORTED_INTERFACES + "=" + BehaviourManagementImpl.EXPORTS}
+)
 @SmartBehaviourDefinition(consumed = {ManagementBidRequestDTO.class},
         author = "Paremus", name = "[Brain-IoT] Behaviour Management Service",
         description = "Implements the Behaviour Management Service")
-public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequestDTO> {
+public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequestDTO>, BehaviourManagement {
+    static final String EXPORTS = "com.paremus.brain.iot.management.api.BehaviourManagement";
+    static final String PID = "eu.brain.iot.BehaviourManagementService";
+
     @interface Config {
         String[] indexes();
     }
@@ -140,12 +138,11 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
     }
 
     @Modified
-    private void modified(Map<String, Object> properties) {
+    private synchronized void modified(Map<String, Object> properties) {
         debug("modified: " + properties);
         config = standardConverter().convert(properties).to(Config.class);
-        String[] indexes = config.indexes();
-
-        for (String index : indexes) {
+        this.indexes.clear();
+        for (String index : config.indexes()) {
             this.indexes.add(URI.create(index));
         }
     }
@@ -166,13 +163,32 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         }
     }
 
+    @Override
+    public Collection<BehaviourDTO> findBehaviours(String ldapFilter) throws Exception {
+        return resolver.findBehaviours(Arrays.asList(config.indexes()), ldapFilter);
+    }
+
+    @Override
+    public void installBehaviour(BehaviourDTO behaviour, String targetNode) {
+        ManagementInstallRequestDTO request = new ManagementInstallRequestDTO();
+
+        request.targetNode = targetNode;
+        request.eventType = "install:" + behaviour.bundle + ":" + behaviour.version;
+
+        request.eventData = new HashMap<>();
+        request.eventData.put("name", behaviour.name);
+        request.eventData.put("bundle", behaviour.bundle);
+        request.eventData.put("version", behaviour.version);
+
+        eventBus.deliver(request);
+    }
 
     @Override
     public void notify(ManagementBidRequestDTO request) {
         queue.add(request);
     }
 
-    public void notify(ManagementInstallRequestDTO request) {
+    void notify(ManagementInstallRequestDTO request) {
         queue.add(request);
     }
 
@@ -310,8 +326,6 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
                     List<String> rawRequirements = new ArrayList<>();
                     rawRequirements.add(String.format("%s;filter:=(consumed=%s)",
                             "eu.brain.iot.behaviour", request.eventType));
-//                    rawRequirements.add(String.format("%s;filter:=%s",
-//                            "osgi.ee", "(&(osgi.ee=JavaSE)(version=1.8))"));
 
                     List<Requirement> requirements = rawRequirements.stream()
                             .map(s -> resolver.parseRequement(s)).collect(Collectors.toList());
@@ -332,10 +346,19 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
                         // create request to install requirement
                         InstallRequestDTO installRequest = new InstallRequestDTO();
                         installRequest.action = InstallAction.INSTALL;
-                        installRequest.name = name;
                         installRequest.symbolicName = eventType;
-                        installRequest.indexes = indexes.stream().map(URI::toString).collect(Collectors.toList());
-                        installRequest.requirements = rawRequirements;
+                        installRequest.indexes = Arrays.asList(config.indexes());
+
+                        if (request.eventData == null || !request.eventData.containsKey("bundle")) {
+                            installRequest.name = name;
+                            installRequest.requirements = rawRequirements;
+                        } else {
+                            String bundle = (String) request.eventData.get("bundle");
+                            String version = (String) request.eventData.get("version");
+                            installRequest.name = "ManualInstall: " + request.eventData.get("name");
+                            installRequest.bundles = Collections.singletonMap(bundle, version != null ? version : "0");
+                        }
+
                         eventBus.deliver(installRequest);
                     } else {
                         throw new Exception("unknown request: " + request);
@@ -344,6 +367,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
                     if (running.get()) {
                         if (log != null)
                             log.warn("Failed to process action(%s) event(%s): %s", action, request.eventType, e.toString(), e);
+                        e.printStackTrace();
                         ManagementResponseDTO response = new ManagementResponseDTO();
                         response.code = ManagementResponseDTO.ResponseCode.FAIL;
                         response.eventType = request.eventType;
