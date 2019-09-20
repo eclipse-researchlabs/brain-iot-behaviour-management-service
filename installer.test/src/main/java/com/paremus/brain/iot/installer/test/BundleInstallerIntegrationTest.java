@@ -5,7 +5,6 @@
 
 package com.paremus.brain.iot.installer.test;
 
-import com.paremus.brain.iot.management.api.ManagementConstants;
 import eu.brain.iot.eventing.api.EventBus;
 import eu.brain.iot.eventing.api.SmartBehaviour;
 import eu.brain.iot.installer.api.InstallRequestDTO;
@@ -60,7 +59,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
         URI index1 = (new File(resourceDir, "index2.xml")).toURI();
         props.put("indexes", index1.toString());
 
-        Configuration config = deps.configAdmin.getConfiguration(ManagementConstants.PID, "?");
+        Configuration config = deps.configAdmin.getConfiguration("eu.brain.iot.BehaviourManagementService", "?");
         config.update(props);
         Thread.sleep(1000);
     }

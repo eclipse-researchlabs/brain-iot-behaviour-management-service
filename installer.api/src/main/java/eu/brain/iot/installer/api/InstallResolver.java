@@ -19,7 +19,9 @@ public interface InstallResolver {
 
     Map<Resource, String> resolveInitial(String name, List<URI> indexes, Collection<Requirement> requirements) throws Exception;
 
-    Map<Resource, String> resolve(String name, List<URI> indexes, Collection<Requirement> requirements, Map<Resource, Wiring> wiringMap) throws  Exception;
+    Map<Resource, String> resolve(String name, List<URI> indexes, Collection<Requirement> requirements, Map<Resource, Wiring> wiringMap) throws Exception;
 
     Requirement parseRequement(String requirement);
+
+    Collection<BehaviourDTO> findBehaviours(List<String> indexes, String ldapFilter) throws Exception;
 }
