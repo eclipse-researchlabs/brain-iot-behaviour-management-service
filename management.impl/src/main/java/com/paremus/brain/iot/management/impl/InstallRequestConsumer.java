@@ -18,10 +18,10 @@ import org.osgi.service.component.annotations.Reference;
 public class InstallRequestConsumer implements SmartBehaviour<ManagementInstallRequestDTO> {
 
     @Reference
-    private BehaviourManagementImpl managementImpl;
+    private ConsumerNotify consumerNotify;
 
     @Override
     public void notify(ManagementInstallRequestDTO event) {
-        managementImpl.notify(event);
+        consumerNotify.notify(event);
     }
 }

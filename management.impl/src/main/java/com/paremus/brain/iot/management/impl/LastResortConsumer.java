@@ -16,10 +16,10 @@ import java.util.Map;
 public class LastResortConsumer implements UntypedSmartBehaviour {
 
     @Reference
-    private BehaviourManagementImpl managementImpl;
+    private ConsumerNotify consumerNotify;
 
     @Override
     public void notify(String eventType, Map<String, ?> properties) {
-        managementImpl.notifyLastResort(eventType, properties);
+        consumerNotify.notifyLastResort(eventType, properties);
     }
 }

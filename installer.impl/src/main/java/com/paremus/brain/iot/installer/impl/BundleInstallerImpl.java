@@ -50,7 +50,7 @@ import static org.osgi.framework.Bundle.RESOLVED;
         author = "Paremus", name = "[Brain-IoT] Bundle Installer Service",
         description = "Resolves requirements using supplied indexes and installs all dependencies."
 )
-public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO>, Runnable {
+public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
 
     @Reference(service = LoggerFactory.class, cardinality = ReferenceCardinality.OPTIONAL)
     private FormatterLogger log;
@@ -83,7 +83,7 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO>, R
 
     // also called by test
     synchronized void start() {
-        thread = new Thread(this, "BRAIN-IoT BundleInstaller Thread");
+        thread = new InstallerThread();
         thread.start();
     }
 
@@ -104,48 +104,6 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO>, R
     @Override
     public void notify(InstallRequestDTO event) {
         queue.add(event);
-    }
-
-
-    @Override
-    public void run() {
-        while (running.get()) {
-            InstallRequestDTO request = null;
-
-            try {
-                request = queue.take();
-                debug("\n\nRequest: action=%s name=%s(%s) version=%s",
-                        request.action, request.name, request.symbolicName, request.version);
-
-                if (request.action == null)
-                    throw new BadRequestException("unknown action: null");
-
-                switch (request.action) {
-                    case INSTALL:
-                    case UPDATE:
-                        List<String> added = install(request);
-                        sendResponse(ResponseCode.SUCCESS, added, request);
-                        break;
-
-                    case UNINSTALL:
-                    case RESET:
-                        List<String> removed = uninstall(request);
-                        sendResponse(ResponseCode.SUCCESS, removed, request);
-                        break;
-
-                    default:
-                        throw new BadRequestException("unknown action: " + request.action);
-                }
-            } catch (BadRequestException e) {
-                sendResponse(ResponseCode.BAD_REQUEST, e.getMessage(), request);
-            } catch (Exception e) {
-                if (running.get()) {
-                    if (log != null)
-                        log.warn("request %s failed: %s", request.action, e.toString(), e);
-                    sendResponse(ResponseCode.FAIL, e.toString(), request);
-                }
-            }
-        }
     }
 
     // package access for Mockito
@@ -383,4 +341,53 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO>, R
             System.err.printf("default:DEBUG:" + format + "\n", args);
         }
     }
+
+    private class InstallerThread extends Thread {
+
+        public InstallerThread() {
+            super("BRAIN-IoT BundleInstaller Thread");
+        }
+
+        @Override
+        public void run() {
+            while (running.get()) {
+                InstallRequestDTO request = null;
+
+                try {
+                    request = queue.take();
+                    debug("\n\nRequest: action=%s name=%s(%s) version=%s",
+                            request.action, request.name, request.symbolicName, request.version);
+
+                    if (request.action == null)
+                        throw new BadRequestException("unknown action: null");
+
+                    switch (request.action) {
+                        case INSTALL:
+                        case UPDATE:
+                            List<String> added = install(request);
+                            sendResponse(ResponseCode.SUCCESS, added, request);
+                            break;
+
+                        case UNINSTALL:
+                        case RESET:
+                            List<String> removed = uninstall(request);
+                            sendResponse(ResponseCode.SUCCESS, removed, request);
+                            break;
+
+                        default:
+                            throw new BadRequestException("unknown action: " + request.action);
+                    }
+                } catch (BadRequestException e) {
+                    sendResponse(ResponseCode.BAD_REQUEST, e.getMessage(), request);
+                } catch (Exception e) {
+                    if (running.get()) {
+                        if (log != null)
+                            log.warn("request %s failed: %s", request.action, e.toString(), e);
+                        sendResponse(ResponseCode.FAIL, e.toString(), request);
+                    }
+                }
+            }
+        }
+    }
+
 }

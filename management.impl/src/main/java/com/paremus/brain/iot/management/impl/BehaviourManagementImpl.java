@@ -53,13 +53,12 @@ import static org.osgi.util.converter.Converters.standardConverter;
 
 @Component(configurationPid = BehaviourManagementImpl.PID,
         configurationPolicy = ConfigurationPolicy.REQUIRE,
-        service = {BehaviourManagementImpl.class, BehaviourManagement.class, SmartBehaviour.class},
         property = {Constants.SERVICE_EXPORTED_INTERFACES + "=" + BehaviourManagementImpl.EXPORTS}
 )
 @SmartBehaviourDefinition(consumed = {ManagementBidRequestDTO.class},
         author = "Paremus", name = "[Brain-IoT] Behaviour Management Service",
         description = "Implements the Behaviour Management Service")
-public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequestDTO>, BehaviourManagement {
+public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequestDTO>, BehaviourManagement, ConsumerNotify {
     static final String EXPORTS = "com.paremus.brain.iot.management.api.BehaviourManagement";
     static final String PID = "eu.brain.iot.BehaviourManagementService";
 
@@ -108,6 +107,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
     @Activate
     private void activate(BundleContext context, Map<String, Object> properties) throws IOException {
+        debug("activate");
         this.context = context;
         myNode = context.getProperty(Constants.FRAMEWORK_UUID);
 
@@ -139,16 +139,26 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
     @Modified
     private synchronized void modified(Map<String, Object> properties) {
-        debug("modified: " + properties);
-        config = standardConverter().convert(properties).to(Config.class);
-        this.indexes.clear();
+        this.config = standardConverter().convert(properties).to(Config.class);
+
+        List<URI> indexes = new ArrayList<>();
         for (String index : config.indexes()) {
-            this.indexes.add(URI.create(index));
+            indexes.add(URI.create(index));
+        }
+
+        // debug to diagnose too many calls to modified()
+        if (!indexes.equals(this.indexes)) {
+            debug("modified: " + properties);
+            this.indexes = indexes;
+        }
+        else {
+            debug("modified: indexes is unchanged!");
         }
     }
 
     @Deactivate
     private synchronized void stop() {
+        debug("deactivate");
         Thread thread = this.thread;
         this.thread = null;
 
@@ -188,11 +198,13 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         queue.add(request);
     }
 
-    void notify(ManagementInstallRequestDTO request) {
+    @Override
+    public void notify(ManagementInstallRequestDTO request) {
         queue.add(request);
     }
 
-    void notify(ManagementResponseDTO response) {
+    @Override
+    public void notify(ManagementResponseDTO response) {
         String eventType = response.eventType;
         switch (response.code) {
             case FAIL:
@@ -225,7 +237,8 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         }
     }
 
-    void notify(InstallResponseDTO response) {
+    @Override
+    public void notify(InstallResponseDTO response) {
         String eventType = response.installRequest.symbolicName;
 
         String target = pendingInstall.remove(eventType);
@@ -249,7 +262,8 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         }
     }
 
-    void notifyLastResort(String eventType, Map<String, ?> properties) {
+    @Override
+    public void notifyLastResort(String eventType, Map<String, ?> properties) {
         List<UntypedEvent> pendingEvents = inProgress.get(eventType);
 
         UntypedEvent event = new UntypedEvent();
@@ -355,7 +369,8 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
                         } else {
                             String bundle = (String) request.eventData.get("bundle");
                             String version = (String) request.eventData.get("version");
-                            installRequest.name = "ManualInstall: " + request.eventData.get("name");
+                            String installName = (String) request.eventData.get("name");
+                            installRequest.name = "ManualInstall: " + installName != null ? installName : eventType;
                             installRequest.bundles = Collections.singletonMap(bundle, version != null ? version : "0");
                         }
 
@@ -385,7 +400,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
             // FIXME: SCR is logging DEBUG on our loggers!
             log.info(format, args);
         } else {
-            System.err.printf("default:DEBUG:" + format + "\n", args);
+            System.err.printf("BMS:DEBUG:" + format + "\n", args);
         }
     }
 
@@ -393,7 +408,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         if (log != null) {
             log.info(format, args);
         } else {
-            System.err.printf("default:INFO:" + format + "\n", args);
+            System.err.printf("BMS:INFO:" + format + "\n", args);
         }
     }
 
@@ -401,7 +416,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         if (log != null) {
             log.warn(format, args);
         } else {
-            System.err.printf("default:WARN:" + format + "\n", args);
+            System.err.printf("BMS:WARN:" + format + "\n", args);
         }
     }
 

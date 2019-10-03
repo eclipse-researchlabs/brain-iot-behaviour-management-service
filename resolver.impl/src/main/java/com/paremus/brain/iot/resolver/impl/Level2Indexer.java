@@ -15,6 +15,7 @@ import java.io.File;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -120,27 +121,26 @@ public class Level2Indexer {
                     .filter(c -> !c.getAttributes().isEmpty() || !c.getDirectives().isEmpty())
                     .distinct()
                     .forEach(cap -> {
-                        List<Capability> ids = cap.getResource().getCapabilities("osgi.identity");
-                        if (!ids.isEmpty()) {
-                            Capability id = CapabilityImpl.copy(ids.get(0), null);
+                        Resource res = cap.getResource();
+                        res.getCapabilities("osgi.identity").forEach(identity -> {
+                            Capability id = CapabilityImpl.copy(identity, null);
                             if (!id.equals(currentId[0])) {
-                                if (resource[0] != null) {
-                                    resources.add(resource[0]);
-                                }
                                 resource[0] = new ResourceImpl();
+                                resources.add(resource[0]);
+
+                                currentId[0] = id;
+                                resource[0].addCapability(id);
+
                                 if (root != null) {
                                     resource[0].addCapability(compositeCapability(root.relativize(index)));
+                                    res.getCapabilities("osgi.wiring.bundle").forEach(wiringBundle -> {
+                                        resource[0].addCapability(wiringBundle);
+                                    });
                                 }
-                                resource[0].addCapability(id);
-                                currentId[0] = id;
                             }
                             resource[0].addCapability(cap);
-                        }
+                        });
                     }));
-
-            if (resource[0] != null) {
-                resources.add(resource[0]);
-            }
         }
 
         return resources;
