@@ -99,7 +99,7 @@ public class ResolverContext extends ResolveContext {
             if (level2indexes.isEmpty()) {
                 this.repositories.put(indexUri, repo);
             } else {
-                //System.out.printf("XXX replacing level-1 index(%s) with: %s\n", indexUri, level2indexes);
+                // System.out.printf("XXX replacing level-1 index(%s) with: %s\n", indexUri, level2indexes);
                 for (String index : level2indexes) {
                     repoProps = new HashMap<>();
                     repoProps.put("locations", index);

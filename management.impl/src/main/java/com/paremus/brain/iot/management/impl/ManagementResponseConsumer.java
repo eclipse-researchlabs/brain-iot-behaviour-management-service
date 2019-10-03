@@ -19,10 +19,10 @@ import org.osgi.service.component.annotations.Reference;
 public class ManagementResponseConsumer implements SmartBehaviour<ManagementResponseDTO> {
 
     @Reference
-    private BehaviourManagementImpl managementImpl;
+    private ConsumerNotify consumerNotify;
 
     @Override
     public void notify(ManagementResponseDTO event) {
-        managementImpl.notify(event);
+        consumerNotify.notify(event);
     }
 }
