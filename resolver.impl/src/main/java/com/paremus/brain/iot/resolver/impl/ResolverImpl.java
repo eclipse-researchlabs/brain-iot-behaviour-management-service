@@ -4,12 +4,16 @@
  */
 package com.paremus.brain.iot.resolver.impl;
 
-import aQute.bnd.osgi.resource.RequirementBuilder;
-import eu.brain.iot.installer.api.BehaviourDTO;
-import eu.brain.iot.installer.api.InstallResolver;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.Filter;
-import org.osgi.framework.InvalidSyntaxException;
 import org.osgi.resource.Requirement;
 import org.osgi.resource.Resource;
 import org.osgi.resource.Wire;
@@ -19,13 +23,10 @@ import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.resolver.Resolver;
 
-import java.net.URI;
-import java.util.Collection;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
+import aQute.bnd.header.Parameters;
+import aQute.bnd.osgi.resource.CapReqBuilder;
+import eu.brain.iot.installer.api.BehaviourDTO;
+import eu.brain.iot.installer.api.InstallResolver;
 
 @Component
 public class ResolverImpl implements InstallResolver {
@@ -56,7 +57,7 @@ public class ResolverImpl implements InstallResolver {
 
     @Override
     public Map<Resource, String> resolve(String name, List<URI> indexes, Collection<Requirement> requirements, Map<Resource, Wiring> wiringMap) throws Exception {
-        ResolverContext context = new ResolverContext(bundleContext, name, indexes, requirements, wiringMap);
+        ResolverContext context = new ResolverContext(bundleContext, name, indexes, new ArrayList<>(requirements), wiringMap);
         Map<Resource, List<Wire>> resolved = frameworkResolver.resolve(context);
 
         final Map<Resource, String> result = new IdentityHashMap<>();
@@ -74,52 +75,14 @@ public class ResolverImpl implements InstallResolver {
 
     @Override
     public Requirement parseRequement(String requirement) {
-        // https://stackoverflow.com/questions/15738918/splitting-a-csv-file-with-quotes-as-text-delimiter-using-string-split
-        String[] parts = requirement.split(";(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
-        RequirementBuilder reqBuilder = null;
-
-        for (String part : parts) {
-            part = part.trim();
-            if (part.isEmpty())
-                continue;
-            String sep = null;
-            int index;
-
-            if ((index = part.indexOf(":=")) > 0) {
-                sep = ":=";
-            } else if ((index = part.indexOf("=")) > 0) {
-                sep = "=";
-            } else if (reqBuilder == null) {
-                reqBuilder = new RequirementBuilder(part.trim());
-                continue;
-            } else {
-                throw new IllegalArgumentException("Illegal directive/attribute: <" + part + ">");
-            }
-
-            if (reqBuilder == null) {
-                throw new IllegalArgumentException("No namespace in requirement: " + requirement);
-            }
-
-            String key = part.substring(0, index).trim();
-            String value = part.substring(index + sep.length()).trim();
-
-            // Remove quotes, if value is quoted.
-            if (value.startsWith("\"") && value.endsWith("\"")) {
-                value = value.substring(1, value.length() - 1);
-            }
-
-            if (sep.equals(":=")) {
-                reqBuilder.addDirective(key, value);
-            } else {
-                try {
-                    reqBuilder.addAttribute(key, value);
-                } catch (Exception e) {
-                    throw new IllegalArgumentException("Invalid requirement attribute: " + part, e);
-                }
-            }
-        }
-
-        return reqBuilder.buildSyntheticRequirement();
+    	
+    	Parameters p = new Parameters(requirement);
+    	
+    	try {
+			return CapReqBuilder.getRequirementsFrom(p).get(0);
+		} catch (Exception e) {
+			throw new IllegalArgumentException("An error occurred parsing the requirement " + requirement, e);
+		}
     }
 
     @Override
@@ -127,5 +90,7 @@ public class ResolverImpl implements InstallResolver {
         Filter filter = ldapFilter != null ? bundleContext.createFilter(ldapFilter) : null;
         return Level2Indexer.findBrainIotResources(indexes, filter);
     }
+    
+    
 
 }
