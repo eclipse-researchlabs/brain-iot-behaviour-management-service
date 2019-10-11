@@ -7,8 +7,10 @@ package com.paremus.brain.iot.management.impl;
 
 import static com.paremus.brain.iot.management.api.ManagementResponseDTO.ResponseCode.ALREADY_INSTALLED;
 import static com.paremus.brain.iot.management.api.ManagementResponseDTO.ResponseCode.BID;
+import static eu.brain.iot.behaviour.namespace.SmartBehaviourNamespace.SMART_BEHAVIOUR_NAMESPACE;
+import static java.util.stream.Collectors.toList;
+import static org.osgi.framework.namespace.IdentityNamespace.IDENTITY_NAMESPACE;
 
-import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -32,6 +34,7 @@ import java.util.stream.Collectors;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
 import org.osgi.framework.ServiceRegistration;
+import org.osgi.resource.Capability;
 import org.osgi.resource.Requirement;
 import org.osgi.resource.Resource;
 import org.osgi.service.cm.ConfigurationAdmin;
@@ -51,6 +54,10 @@ import com.paremus.brain.iot.management.api.ManagementInstallRequestDTO;
 import com.paremus.brain.iot.management.api.ManagementRequestDTO;
 import com.paremus.brain.iot.management.api.ManagementResponseDTO;
 
+import aQute.bnd.http.HttpClient;
+import aQute.bnd.osgi.Processor;
+import aQute.bnd.osgi.resource.ResourceUtils;
+import aQute.bnd.repository.osgi.OSGiRepository;
 import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
 import eu.brain.iot.eventing.api.EventBus;
 import eu.brain.iot.eventing.api.SmartBehaviour;
@@ -117,10 +124,15 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
     private String myNode;
     
     private List<ServiceRegistration<?>> registrations = new ArrayList<ServiceRegistration<?>>();
+	
+    private BundleContext context;
+    
+    private OSGiRepository repository;
 
     @Activate
-    private void activate(BundleContext context, Config config) throws IOException {
-        debug("activate");
+    private void activate(BundleContext context, Config config) throws Exception {
+        this.context = context;
+		debug("activate");
         myNode = context.getProperty(Constants.FRAMEWORK_UUID);
 
         // configure our consumers to only accept responses to our requests
@@ -171,7 +183,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
     }
 
     @Modified
-    private synchronized void modified(Config cfg) {
+    private synchronized void modified(Config cfg) throws Exception {
         this.config = cfg;
 
         List<URI> indexes = new ArrayList<>();
@@ -183,13 +195,48 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         if (!indexes.equals(this.indexes)) {
             debug("modified: " + indexes);
             this.indexes = indexes;
+            
+            loadIndexes();
         }
         else {
             debug("modified: indexes is unchanged!");
         }
     }
 
-    @Deactivate
+    private void loadIndexes() throws Exception {
+    	Processor p = new Processor();
+    	HttpClient client = new HttpClient();
+		client.setReporter(p);
+		client.setRegistry(p);
+		p.addBasicPlugin(client);
+		
+		OSGiRepository repo = new OSGiRepository();
+		repo.setReporter(p);
+		repo.setRegistry(p);
+		
+		Map<String, String> props = new HashMap<>();
+		props.put("name", "Bundle Management Marketplaces");
+		props.put("locations", indexes.stream().map(URI::toString).collect(Collectors.joining(",")));
+		props.put("cache", context.getDataFile("httpcache").getAbsolutePath());
+
+		repo.setProperties(props);
+		
+		shutdownOldRepo();
+		
+		this.repository = repo;
+	}
+
+	private void shutdownOldRepo() {
+		if(repository != null) {
+			try {
+				repository.close();
+			} catch (Exception e) {
+				// Nothing to see here
+			}
+		}
+	}
+
+	@Deactivate
     private synchronized void stop() {
         debug("deactivate");
         
@@ -213,11 +260,46 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
             thread.join(2000);
         } catch (InterruptedException e) {
         }
+        shutdownOldRepo();
     }
 
     @Override
     public Collection<BehaviourDTO> findBehaviours(String ldapFilter) throws Exception {
-        return resolver.findBehaviours(Arrays.asList(config.indexes()), ldapFilter);
+    	
+    	Requirement req = repository.newRequirementBuilder(SMART_BEHAVIOUR_NAMESPACE)
+    				.addDirective("filter", ldapFilter)
+    				.build();
+		return repository.findProviders(Collections.singleton(req)).entrySet().stream()
+			.flatMap(e -> e.getValue().stream())
+			.map(this::newBehaviour)
+			.collect(toList());
+    }
+    
+    private BehaviourDTO newBehaviour(Capability cap) {
+        BehaviourDTO dto = new BehaviourDTO();
+        Resource resource = cap.getResource();
+		Capability idCap = resource.getCapabilities(IDENTITY_NAMESPACE).get(0);
+        
+        dto.bundle = ResourceUtils.getIdentity(idCap);
+        dto.version = ResourceUtils.getIdentityVersion(resource);
+        
+        cap.getAttributes().forEach((k, v) -> {
+            switch (k) {
+                case "name":
+                    dto.name = String.valueOf(v);
+                    break;
+                case "description":
+                    dto.description = String.valueOf(v);
+                    break;
+                case "author":
+                    dto.author = String.valueOf(v);
+                    break;
+                case "consumed":
+                    dto.consumed = String.valueOf(v);
+                    break;
+            }
+        });
+        return dto;
     }
 
     @Override

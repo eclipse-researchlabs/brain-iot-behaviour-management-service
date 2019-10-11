@@ -40,6 +40,16 @@
         </dependency>
 
         <dependency>
+            <groupId>biz.aQute.bnd</groupId>
+            <artifactId>biz.aQute.bndlib</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>biz.aQute.bnd</groupId>
+            <artifactId>biz.aQute.repository</artifactId>
+        </dependency>
+
+        <dependency>
             <groupId>org.osgi.enroute</groupId>
             <artifactId>test-bundles</artifactId>
             <type>pom</type>
