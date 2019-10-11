@@ -5,7 +5,11 @@
 
 package com.paremus.brain.iot.management.api;
 
-public abstract class ManagementRequestDTO extends ManagementDTO {
+import eu.brain.iot.eventing.api.BrainIoTEvent;
+
+public abstract class ManagementDTO extends BrainIoTEvent {
 
     public String requestIdentity;
+    
+    public String requirement;
 }

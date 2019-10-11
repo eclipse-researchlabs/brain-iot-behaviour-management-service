@@ -32,8 +32,6 @@ webconsole:\
 	bnd.identity;id='org.apache.felix.webconsole.plugins.ds'
 
 -runbundles: \
-	biz.aQute.bndlib;version='[4.2.0,4.2.1)',\
-	biz.aQute.repository;version='[4.2.0,4.2.1)',\
 	ch.qos.logback.classic;version='[1.2.3,1.2.4)',\
 	ch.qos.logback.core;version='[1.2.3,1.2.4)',\
 	com.paremus.brain.iot.eventing.api;version='[0.0.1,0.0.2)',\
@@ -50,4 +48,6 @@ webconsole:\
 	org.apache.servicemix.bundles.junit;version='[4.12.0,4.12.1)',\
 	org.osgi.util.function;version='[1.1.0,1.1.1)',\
 	org.osgi.util.pushstream;version='[1.0.0,1.0.1)',\
-	slf4j.api;version='[1.7.25,1.7.26)'
+	slf4j.api;version='[1.7.25,1.7.26)',\
+	biz.aQute.bndlib;version='[4.3.0,4.3.1)',\
+	biz.aQute.repository;version='[4.3.0,4.3.1)'
