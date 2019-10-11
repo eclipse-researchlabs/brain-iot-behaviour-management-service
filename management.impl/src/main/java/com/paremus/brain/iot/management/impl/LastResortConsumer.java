@@ -4,22 +4,22 @@
  */
 package com.paremus.brain.iot.management.impl;
 
-import eu.brain.iot.eventing.annotation.ConsumerOfLastResort;
-import eu.brain.iot.eventing.api.UntypedSmartBehaviour;
-import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.Reference;
-
 import java.util.Map;
 
-@Component
+import eu.brain.iot.eventing.annotation.ConsumerOfLastResort;
+import eu.brain.iot.eventing.api.UntypedSmartBehaviour;
+
 @ConsumerOfLastResort
 public class LastResortConsumer implements UntypedSmartBehaviour {
 
-    @Reference
-    private ConsumerNotify consumerNotify;
+    private BehaviourManagementImpl bmi;
 
-    @Override
+    public LastResortConsumer(BehaviourManagementImpl behaviourManagementImpl) {
+		bmi = behaviourManagementImpl;
+	}
+
+	@Override
     public void notify(String eventType, Map<String, ?> properties) {
-        consumerNotify.notifyLastResort(eventType, properties);
+        bmi.notifyLastResort(eventType, properties);
     }
 }

@@ -4,25 +4,27 @@
  */
 package com.paremus.brain.iot.management.impl;
 
+import static com.paremus.brain.iot.management.impl.BehaviourManagementImpl.BEHAVIOUR_AUTHOR;
+import static com.paremus.brain.iot.management.impl.BehaviourManagementImpl.BEHAVIOUR_NAME;
+
 import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
 import eu.brain.iot.eventing.api.SmartBehaviour;
 import eu.brain.iot.installer.api.InstallResponseDTO;
-import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.ConfigurationPolicy;
-import org.osgi.service.component.annotations.Reference;
 
-@Component(configurationPolicy = ConfigurationPolicy.REQUIRE)
 @SmartBehaviourDefinition(consumed = {InstallResponseDTO.class},
-        author = "Paremus", name = "[Brain-IoT] Behaviour Management Service",
+        author = BEHAVIOUR_AUTHOR, name = BEHAVIOUR_NAME,
         description = "Install response consumer"
 )
 public class InstallResponseConsumer implements SmartBehaviour<InstallResponseDTO> {
 
-    @Reference
-    private ConsumerNotify consumerNotify;
+	private BehaviourManagementImpl bmi;
 
-    @Override
+    public InstallResponseConsumer(BehaviourManagementImpl behaviourManagementImpl) {
+		this.bmi = behaviourManagementImpl;
+	}
+
+	@Override
     public void notify(InstallResponseDTO event) {
-        consumerNotify.notify(event);
+        bmi.notify(event);
     }
 }

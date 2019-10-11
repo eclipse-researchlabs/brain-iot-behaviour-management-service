@@ -5,25 +5,35 @@
 
 package com.paremus.brain.iot.management.impl;
 
-import com.paremus.brain.iot.management.api.BehaviourManagement;
-import com.paremus.brain.iot.management.api.ManagementBidRequestDTO;
-import com.paremus.brain.iot.management.api.ManagementInstallRequestDTO;
-import com.paremus.brain.iot.management.api.ManagementRequestDTO;
-import com.paremus.brain.iot.management.api.ManagementResponseDTO;
-import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
-import eu.brain.iot.eventing.api.EventBus;
-import eu.brain.iot.eventing.api.SmartBehaviour;
-import eu.brain.iot.installer.api.BehaviourDTO;
-import eu.brain.iot.installer.api.InstallRequestDTO;
-import eu.brain.iot.installer.api.InstallRequestDTO.InstallAction;
-import eu.brain.iot.installer.api.InstallResolver;
-import eu.brain.iot.installer.api.InstallResponseDTO;
-import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
+import static com.paremus.brain.iot.management.api.ManagementResponseDTO.ResponseCode.ALREADY_INSTALLED;
+import static com.paremus.brain.iot.management.api.ManagementResponseDTO.ResponseCode.BID;
+
+import java.io.IOException;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Hashtable;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
+import org.osgi.framework.ServiceRegistration;
 import org.osgi.resource.Requirement;
 import org.osgi.resource.Resource;
-import org.osgi.service.cm.Configuration;
 import org.osgi.service.cm.ConfigurationAdmin;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
@@ -35,40 +45,43 @@ import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.log.FormatterLogger;
 import org.osgi.service.log.LoggerFactory;
 
-import java.io.IOException;
-import java.net.URI;
-import java.util.*;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
+import com.paremus.brain.iot.management.api.BehaviourManagement;
+import com.paremus.brain.iot.management.api.ManagementBidRequestDTO;
+import com.paremus.brain.iot.management.api.ManagementInstallRequestDTO;
+import com.paremus.brain.iot.management.api.ManagementRequestDTO;
+import com.paremus.brain.iot.management.api.ManagementResponseDTO;
 
-import static com.paremus.brain.iot.management.api.ManagementResponseDTO.ResponseCode.ALREADY_INSTALLED;
-import static com.paremus.brain.iot.management.api.ManagementResponseDTO.ResponseCode.BID;
-import static org.osgi.util.converter.Converters.standardConverter;
+import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
+import eu.brain.iot.eventing.api.EventBus;
+import eu.brain.iot.eventing.api.SmartBehaviour;
+import eu.brain.iot.eventing.api.UntypedSmartBehaviour;
+import eu.brain.iot.installer.api.BehaviourDTO;
+import eu.brain.iot.installer.api.InstallRequestDTO;
+import eu.brain.iot.installer.api.InstallRequestDTO.InstallAction;
+import eu.brain.iot.installer.api.InstallResolver;
+import eu.brain.iot.installer.api.InstallResponseDTO;
+import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
 
 @Component(configurationPid = BehaviourManagementImpl.PID,
         configurationPolicy = ConfigurationPolicy.REQUIRE,
         property = {Constants.SERVICE_EXPORTED_INTERFACES + "=" + BehaviourManagementImpl.EXPORTS}
 )
 @SmartBehaviourDefinition(consumed = {ManagementBidRequestDTO.class},
-        author = "Paremus", name = "[Brain-IoT] Behaviour Management Service",
+        author = BehaviourManagementImpl.BEHAVIOUR_AUTHOR, 
+        name = BehaviourManagementImpl.BEHAVIOUR_NAME,
         description = "Implements the Behaviour Management Service")
-public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequestDTO>, BehaviourManagement, ConsumerNotify {
-    static final String EXPORTS = "com.paremus.brain.iot.management.api.BehaviourManagement";
+public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequestDTO>, BehaviourManagement {
+    
+	static final String BEHAVIOUR_AUTHOR = "Paremus";
+    static final String BEHAVIOUR_NAME = "[Brain-IoT] Behaviour Management Service";
+    
+    static final String EVENT_SERVICE_PROPERTY_PREFIX = "eu.brain.iot.behaviour.";
+	
+	static final String EXPORTS = "com.paremus.brain.iot.management.api.BehaviourManagement";
     static final String PID = "eu.brain.iot.BehaviourManagementService";
 
     @interface Config {
         String[] indexes();
-    }
-
-    class UntypedEvent {
-        String eventType;
-        Map<String, Object> eventData;
     }
 
     @Reference(service = LoggerFactory.class, cardinality = ReferenceCardinality.OPTIONAL)
@@ -89,7 +102,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
     private final ScheduledExecutorService sched = Executors.newSingleThreadScheduledExecutor();
 
-    private final Map<String, List<UntypedEvent>> inProgress = new ConcurrentHashMap<>();
+    private final Map<String, List<Map<String, Object>>> inProgressUntyped = new ConcurrentHashMap<>();
     private final Map<String, Set<ManagementResponseDTO>> bidResponses = new ConcurrentHashMap<>();
     private final Map<String, String> pendingInstall = new ConcurrentHashMap<>();
 
@@ -97,36 +110,56 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
     private List<URI> indexes = new ArrayList<>();
 
-    private BundleContext context;
-
     private Config config;
 
     private Thread thread;
 
     private String myNode;
+    
+    private List<ServiceRegistration<?>> registrations = new ArrayList<ServiceRegistration<?>>();
 
     @Activate
-    private void activate(BundleContext context, Map<String, Object> properties) throws IOException {
+    private void activate(BundleContext context, Config config) throws IOException {
         debug("activate");
-        this.context = context;
         myNode = context.getProperty(Constants.FRAMEWORK_UUID);
 
         // configure our consumers to only accept responses to our requests
-        Dictionary<String, Object> props = new Hashtable<>();
-        Configuration cfg;
+        Hashtable<String, Object> baseProps = new Hashtable<>();
+        baseProps.put(EVENT_SERVICE_PROPERTY_PREFIX + "author", BEHAVIOUR_AUTHOR);
+        baseProps.put(EVENT_SERVICE_PROPERTY_PREFIX + "name", BEHAVIOUR_NAME);
+        
+        
+        Hashtable<String, Object> props = new Hashtable<>(baseProps);
+        props.put(EVENT_SERVICE_PROPERTY_PREFIX + "description", "Install request consumer");
+        props.put(EVENT_SERVICE_PROPERTY_PREFIX + "consumed", ManagementInstallRequestDTO.class.getName());
+        props.put(EVENT_SERVICE_PROPERTY_PREFIX + "filter", String.format("(targetNode=%s)", myNode));
+        
+        registrations.add(context.registerService(SmartBehaviour.class, 
+        		new InstallRequestConsumer(this), props));
+        
+        props = new Hashtable<>(baseProps);
+        props.put(EVENT_SERVICE_PROPERTY_PREFIX + "description", "Install response consumer");
+        props.put(EVENT_SERVICE_PROPERTY_PREFIX + "consumed", InstallResponseDTO.class.getName());
+        props.put(EVENT_SERVICE_PROPERTY_PREFIX + "filter", String.format("(requestNode=%s)", myNode));
 
-        props.put("filter", String.format("(targetNode=%s)", myNode));
-        cfg = configAdmin.getConfiguration(InstallRequestConsumer.class.getName(), "?");
-        cfg.update(props);
+        registrations.add(context.registerService(SmartBehaviour.class, 
+        		new InstallResponseConsumer(this), props));
 
-        cfg = configAdmin.getConfiguration(ManagementResponseConsumer.class.getName(), "?");
-        cfg.update(props);
+        props = new Hashtable<>(baseProps);
+        props.put(EVENT_SERVICE_PROPERTY_PREFIX + "description", "Management response consumer");
+        props.put(EVENT_SERVICE_PROPERTY_PREFIX + "consumed", ManagementResponseDTO.class.getName());
+        
+        registrations.add(context.registerService(SmartBehaviour.class, 
+        		new ManagementResponseConsumer(this), props));
 
-        props.put("filter", String.format("(requestNode=%s)", myNode));
-        cfg = configAdmin.getConfiguration(InstallResponseConsumer.class.getName(), "?");
-        cfg.update(props);
-
-        modified(properties);
+        props = new Hashtable<>(baseProps);
+        props.put(EVENT_SERVICE_PROPERTY_PREFIX + "description", "Unhandled Event consumer");
+        props.put(EVENT_SERVICE_PROPERTY_PREFIX + "consumer.of.last.resort", true);
+        
+        registrations.add(context.registerService(UntypedSmartBehaviour.class, 
+        		new LastResortConsumer(this), props));
+        
+        modified(config);
         start();
     }
 
@@ -138,8 +171,8 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
     }
 
     @Modified
-    private synchronized void modified(Map<String, Object> properties) {
-        this.config = standardConverter().convert(properties).to(Config.class);
+    private synchronized void modified(Config cfg) {
+        this.config = cfg;
 
         List<URI> indexes = new ArrayList<>();
         for (String index : config.indexes()) {
@@ -148,7 +181,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
         // debug to diagnose too many calls to modified()
         if (!indexes.equals(this.indexes)) {
-            debug("modified: " + properties);
+            debug("modified: " + indexes);
             this.indexes = indexes;
         }
         else {
@@ -159,6 +192,15 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
     @Deactivate
     private synchronized void stop() {
         debug("deactivate");
+        
+        for(ServiceRegistration<?> reg : registrations) {
+        	try {
+        		reg.unregister();
+        	} catch (IllegalStateException ise) {
+        		// Just keep going
+        	}
+        }
+        
         Thread thread = this.thread;
         this.thread = null;
 
@@ -198,13 +240,11 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         queue.add(request);
     }
 
-    @Override
-    public void notify(ManagementInstallRequestDTO request) {
+    void notify(ManagementInstallRequestDTO request) {
         queue.add(request);
     }
 
-    @Override
-    public void notify(ManagementResponseDTO response) {
+    void notify(ManagementResponseDTO response) {
         String eventType = response.eventType;
         switch (response.code) {
             case FAIL:
@@ -220,25 +260,24 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
             case ALREADY_INSTALLED:
                 warn("consumer for <%s> is already installed on node <%s>", eventType, response.sourceNode);
                 bidResponses.remove(eventType);
-                inProgress.remove(eventType);
+                inProgressUntyped.remove(eventType);
                 break;
 
             case INSTALL_OK:
                 blacklist.put(eventType, 0L);   // flag install ok
-                List<UntypedEvent> events = inProgress.remove(eventType);
+                List<Map<String, Object>> events = inProgressUntyped.remove(eventType);
 
                 if (events != null) {
                     info("Resending %d last resort events(%s)", events.size(), eventType);
-                    for (UntypedEvent event : events) {
-                        eventBus.deliver(event.eventType, event.eventData);
+                    for (Map<String, Object> event : events) {
+                        eventBus.deliver(eventType, event);
                     }
                 }
                 break;
         }
     }
 
-    @Override
-    public void notify(InstallResponseDTO response) {
+    void notify(InstallResponseDTO response) {
         String eventType = response.installRequest.symbolicName;
 
         String target = pendingInstall.remove(eventType);
@@ -262,17 +301,12 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         }
     }
 
-    @Override
-    public void notifyLastResort(String eventType, Map<String, ?> properties) {
-        List<UntypedEvent> pendingEvents = inProgress.get(eventType);
-
-        UntypedEvent event = new UntypedEvent();
-        event.eventType = eventType;
-        event.eventData = new HashMap<String, Object>(properties);
+    void notifyLastResort(String eventType, Map<String, ?> properties) {
+        List<Map<String, Object>> pendingEvents = inProgressUntyped.get(eventType);
 
         if (pendingEvents != null) {
             info("Queue Last_Resort event(%s) pending install", eventType);
-            pendingEvents.add(event);
+            pendingEvents.add(new HashMap<String, Object>(properties));
         } else if (blacklist.containsKey(eventType)) {
             if (blacklist.get(eventType) == 0) {
                 warn("Event(%s) still not consumed after installing behaviour", eventType);
@@ -282,8 +316,8 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
             }
         } else {
             pendingEvents = new ArrayList<>();
-            inProgress.put(eventType, pendingEvents);
-            pendingEvents.add(event);
+            inProgressUntyped.put(eventType, pendingEvents);
+            pendingEvents.add(new HashMap<String, Object>(properties));
 
             // prepare for bid responses
             bidResponses.put(eventType, new HashSet<>());
@@ -338,7 +372,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
                     info("\n\nProcessing %s eventType=%s %s", action, eventType, request.eventData);
 
                     List<String> rawRequirements = new ArrayList<>();
-                    rawRequirements.add(String.format("%s;filter:=(consumed=%s)",
+                    rawRequirements.add(String.format("%s;filter:=\"(consumed=%s)\"",
                             "eu.brain.iot.behaviour", request.eventType));
 
                     List<Requirement> requirements = rawRequirements.stream()
