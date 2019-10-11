@@ -4,9 +4,20 @@
  */
 package com.paremus.brain.iot.resolver.impl;
 
-import aQute.bnd.http.HttpClient;
-import aQute.bnd.repository.osgi.OSGiRepository;
-import aQute.bnd.service.url.URLConnector;
+import static org.osgi.framework.namespace.IdentityNamespace.IDENTITY_NAMESPACE;
+
+import java.net.URI;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.Filter;
@@ -25,17 +36,11 @@ import org.osgi.service.repository.Repository;
 import org.osgi.service.resolver.HostedCapability;
 import org.osgi.service.resolver.ResolveContext;
 
-import java.net.URI;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.IdentityHashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
+import aQute.bnd.http.HttpClient;
+import aQute.bnd.osgi.resource.CapReqBuilder;
+import aQute.bnd.osgi.resource.ResourceBuilder;
+import aQute.bnd.repository.osgi.OSGiRepository;
+import aQute.bnd.service.url.URLConnector;
 
 public class ResolverContext extends ResolveContext {
 
@@ -57,21 +62,23 @@ public class ResolverContext extends ResolveContext {
     // insertHostedCapability method.
     private final Map<Resource, Repository> resourceRepositoryMap = new IdentityHashMap<>();
 
-    private final ResourceImpl initialResource;
+    private final Resource initialResource;
 
     private final Map<Resource, Wiring> wiringMap;
 
-    ResolverContext(BundleContext bundleContext, String name, List<URI> indexes, Collection<Requirement> requirements, Map<Resource, Wiring> wiringMap) throws Exception {
+    ResolverContext(BundleContext bundleContext, String name, List<URI> indexes, List<Requirement> requirements, Map<Resource, Wiring> wiringMap) throws Exception {
         this.bundleContext = bundleContext;
         this.wiringMap = (wiringMap != null) ? wiringMap : getWirings(bundleContext);
 
-        this.initialResource = new ResourceImpl();
-        for (Requirement requirement : requirements) {
-            this.initialResource.addRequirement(requirement);
-        }
-        this.initialResource.addCapability(createIdentityCap(this.initialResource, name));
-        this.initialResource.addCapability(createInitialMarkerCapability(this.initialResource));
-
+        ResourceBuilder rb = new ResourceBuilder();
+        
+        rb.addCapability(new CapReqBuilder(IDENTITY_NAMESPACE)
+        		.addAttribute(IDENTITY_NAMESPACE, name));
+        rb.addCapability(new CapReqBuilder(INITIAL_RESOURCE_CAPABILITY_NAMESPACE));
+        rb.addRequirements(requirements);
+        		
+        this.initialResource = rb.build();
+        
 
         BasicRegistry registry = new BasicRegistry();
         registry.put(URLConnector.class, new JarURLConnector());
@@ -294,19 +301,6 @@ public class ResolverContext extends ResolveContext {
             location = this.resourceLocationMap.get(resource);
         }
         return location;
-    }
-
-    private static CapabilityImpl createInitialMarkerCapability(Resource resource) {
-        return new CapabilityImpl(INITIAL_RESOURCE_CAPABILITY_NAMESPACE, Collections.<String, String>emptyMap(), Collections.<String, Object>emptyMap(),
-                resource);
-    }
-
-    private static CapabilityImpl createIdentityCap(Resource resource, String identity) {
-        Map<String, Object> idCapAttrs = new HashMap<>();
-        idCapAttrs.put(IdentityNamespace.IDENTITY_NAMESPACE, identity);
-        CapabilityImpl idCap = new CapabilityImpl(IdentityNamespace.IDENTITY_NAMESPACE, Collections.<String, String>emptyMap(),
-                idCapAttrs, resource);
-        return idCap;
     }
 
     private static URI resolveResourceLocation(Resource resource, URI indexUri) {

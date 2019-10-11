@@ -10,7 +10,19 @@ import eu.brain.iot.installer.api.BehaviourDTO;
 import java.util.Collection;
 
 public interface BehaviourManagement {
+	/**
+	 * Find the behaviours in the known indexes
+	 * 
+	 * @param ldapFilter
+	 * @return
+	 * @throws Exception
+	 */
     Collection<BehaviourDTO> findBehaviours(String ldapFilter) throws Exception;
 
+    /**
+     * Install the named behaviour
+     * @param behaviour
+     * @param targetNode
+     */
     void installBehaviour(BehaviourDTO behaviour, String targetNode);
 }

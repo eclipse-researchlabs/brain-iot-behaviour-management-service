@@ -203,14 +203,14 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
         InstallResponseDTO response;
         List<String> bundles;
 
-        response = queue.poll(5, TimeUnit.SECONDS);
+        response = queue.poll(10, TimeUnit.SECONDS);
         bundles = TestUtils.listBundles(context);
 
         assertTrue(response != null);
         assertEquals(ResponseCode.SUCCESS, response.code);
         assertTrue(bundles.stream().anyMatch(s -> s.contains("example.behaviour.impl")));
 
-        response = queue.poll(10, TimeUnit.SECONDS);
+        response = queue.poll(20, TimeUnit.SECONDS);
         bundles = TestUtils.listBundles(context);
 
         assertTrue(response != null);

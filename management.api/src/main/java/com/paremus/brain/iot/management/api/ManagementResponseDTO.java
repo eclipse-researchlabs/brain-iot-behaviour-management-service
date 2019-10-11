@@ -5,12 +5,10 @@
 
 package com.paremus.brain.iot.management.api;
 
-import eu.brain.iot.eventing.api.BrainIoTEvent;
-
 /**
  * An response event sent by the behaviour management service
  */
-public class ManagementResponseDTO extends BrainIoTEvent {
+public class ManagementResponseDTO extends ManagementDTO {
     public enum ResponseCode {
         /**
          * bid to install requirements
@@ -36,8 +34,6 @@ public class ManagementResponseDTO extends BrainIoTEvent {
     public ResponseCode code;
 
     public Integer bid;
-
-    public String eventType;
 
     public String targetNode;
 

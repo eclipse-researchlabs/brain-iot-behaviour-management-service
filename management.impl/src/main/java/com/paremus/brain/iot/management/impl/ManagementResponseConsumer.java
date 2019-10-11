@@ -4,25 +4,28 @@
  */
 package com.paremus.brain.iot.management.impl;
 
+import static com.paremus.brain.iot.management.impl.BehaviourManagementImpl.BEHAVIOUR_AUTHOR;
+import static com.paremus.brain.iot.management.impl.BehaviourManagementImpl.BEHAVIOUR_NAME;
+
 import com.paremus.brain.iot.management.api.ManagementResponseDTO;
+
 import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
 import eu.brain.iot.eventing.api.SmartBehaviour;
-import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.ConfigurationPolicy;
-import org.osgi.service.component.annotations.Reference;
 
-@Component(configurationPolicy = ConfigurationPolicy.REQUIRE)
 @SmartBehaviourDefinition(consumed = {ManagementResponseDTO.class},
-        author = "Paremus", name = "[Brain-IoT] Behaviour Management Service",
+        author = BEHAVIOUR_AUTHOR, name = BEHAVIOUR_NAME,
         description = "Management response consumer"
 )
 public class ManagementResponseConsumer implements SmartBehaviour<ManagementResponseDTO> {
 
-    @Reference
-    private ConsumerNotify consumerNotify;
+    private BehaviourManagementImpl bmi;
 
-    @Override
+    public ManagementResponseConsumer(BehaviourManagementImpl behaviourManagementImpl) {
+		bmi = behaviourManagementImpl;
+	}
+
+	@Override
     public void notify(ManagementResponseDTO event) {
-        consumerNotify.notify(event);
+        bmi.notify(event);
     }
 }

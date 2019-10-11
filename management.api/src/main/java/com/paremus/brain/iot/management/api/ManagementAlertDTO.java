@@ -37,7 +37,12 @@ public class ManagementAlertDTO extends BrainIoTEvent {
         /**
          * event still unhandled after installation
          */
-        CONSUMER_NOT_CONFIGURED;
+        CONSUMER_NOT_CONFIGURED,
+    	
+    	/**
+    	 * The unhandled event resulted in too many different possible installation options
+    	 */
+    	TOO_MANY_OPTIONS;
     }
 
     public AlertType alert;
