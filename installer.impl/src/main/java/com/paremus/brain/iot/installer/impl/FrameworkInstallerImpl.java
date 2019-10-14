@@ -4,6 +4,20 @@
  */
 package com.paremus.brain.iot.installer.impl;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.BundleException;
@@ -14,20 +28,7 @@ import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.log.FormatterLogger;
 import org.osgi.service.log.LoggerFactory;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URLConnection;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
+import aQute.bnd.http.HttpClient;
 
 @Component
 public class FrameworkInstallerImpl implements FrameworkInstaller {
@@ -44,7 +45,7 @@ public class FrameworkInstallerImpl implements FrameworkInstaller {
 
 
     @Override
-    public synchronized List<Bundle> addLocations(Object sponsor, List<String> bundleLocations) throws BundleException, IOException {
+    public synchronized List<Bundle> addLocations(Object sponsor, List<String> bundleLocations, HttpClient client) throws BundleException, IOException {
         List<Bundle> installed = new ArrayList<>(bundleLocations.size());
 
         for (String location : bundleLocations) {
@@ -59,12 +60,8 @@ public class FrameworkInstallerImpl implements FrameworkInstaller {
             } else {
                 // No existing bundle with that location. Install it and add the sponsor.
                 try {
-                    // Ensure that the URLConnection doesn't cache. Mostly useful for JarURLConnection,
-                    // which leaks file handles if this is not done.
                     URI locationUri = new URI(location);
-                    URLConnection connection = locationUri.toURL().openConnection();
-                    connection.setUseCaches(false);
-                    try (InputStream stream = connection.getInputStream()) {
+                    try (InputStream stream = client.connect(locationUri.toURL())) {
                         if (log != null)
                             log.info("installing %s", locationUri);
                         Bundle bundle = this.context.installBundle(location, stream);
@@ -83,6 +80,9 @@ public class FrameworkInstallerImpl implements FrameworkInstaller {
                     }
                 } catch (URISyntaxException e) {
                     throw new IOException("Invalid bundle location URI: " + location, e);
+                } catch (Exception e) {
+                	if(e instanceof IOException) throw (IOException) e;
+                	else throw new IOException("An unknown error occurred installing a bundle from location URI: " + location, e);
                 }
             }
         }

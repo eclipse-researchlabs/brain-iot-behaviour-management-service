@@ -14,6 +14,7 @@ import static eu.brain.iot.behaviour.namespace.SmartBehaviourDeploymentNamespace
 import static eu.brain.iot.behaviour.namespace.SmartBehaviourDeploymentNamespace.SMART_BEHAVIOUR_DEPLOYMENT_NAMESPACE;
 import static eu.brain.iot.behaviour.namespace.SmartBehaviourNamespace.SMART_BEHAVIOUR_NAMESPACE;
 import static java.lang.String.format;
+import static java.util.Collections.singletonList;
 import static java.util.stream.Collectors.toList;
 import static org.osgi.framework.namespace.IdentityNamespace.CAPABILITY_TYPE_ATTRIBUTE;
 import static org.osgi.framework.namespace.IdentityNamespace.IDENTITY_NAMESPACE;
@@ -21,6 +22,7 @@ import static org.osgi.service.repository.ContentNamespace.CAPABILITY_MIME_ATTRI
 import static org.osgi.service.repository.ContentNamespace.CAPABILITY_URL_ATTRIBUTE;
 import static org.osgi.service.repository.ContentNamespace.CONTENT_NAMESPACE;
 
+import java.io.File;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -56,6 +58,9 @@ import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.log.FormatterLogger;
 import org.osgi.service.log.LoggerFactory;
+import org.osgi.service.metatype.annotations.AttributeDefinition;
+import org.osgi.service.metatype.annotations.Designate;
+import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 
 import com.paremus.brain.iot.management.api.BehaviourManagement;
 import com.paremus.brain.iot.management.api.ManagementBidRequestDTO;
@@ -83,6 +88,7 @@ import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
         configurationPolicy = ConfigurationPolicy.REQUIRE,
         property = {Constants.SERVICE_EXPORTED_INTERFACES + "=" + BehaviourManagementImpl.EXPORTS}
 )
+@Designate(ocd=BehaviourManagementImpl.Config.class)
 @SmartBehaviourDefinition(consumed = {ManagementBidRequestDTO.class},
         author = BehaviourManagementImpl.BEHAVIOUR_AUTHOR, 
         name = BehaviourManagementImpl.BEHAVIOUR_NAME,
@@ -102,8 +108,12 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 	static final String EXPORTS = "com.paremus.brain.iot.management.api.BehaviourManagement";
     static final String PID = "eu.brain.iot.BehaviourManagementService";
 
-    @interface Config {
+    @ObjectClassDefinition
+    public @interface Config {
+    	@AttributeDefinition(description="The Marketplace indexes for installing Smart Behaviours")
         String[] indexes();
+        @AttributeDefinition(description="Connection settings file for index and bundle download", defaultValue="")
+    	public String connection_settings() default "";
     }
 
     class UntypedEvent {
@@ -145,15 +155,30 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
     
     private List<ServiceRegistration<?>> registrations = new ArrayList<ServiceRegistration<?>>();
 	
-    private BundleContext context;
-    
-    private OSGiRepository repository;
+	private Processor processor;
+	private HttpClient client;
+
+	private OSGiRepository repository;
+	private File httpCacheDir;
 
     @Activate
     private void activate(BundleContext context, Config config) throws Exception {
-        this.context = context;
 		debug("activate");
         myNode = context.getProperty(Constants.FRAMEWORK_UUID);
+        httpCacheDir = context.getDataFile("httpcache");
+        
+        
+        processor = new Processor();
+    	processor.set(Processor.CONNECTION_SETTINGS, config.connection_settings());
+        
+    	client = new HttpClient();
+    	client.setReporter(processor);
+    	client.setRegistry(processor);
+    	client.setCache(httpCacheDir);
+
+    	client.readSettings(processor);
+		
+		processor.addBasicPlugin(client);
 
         // configure our consumers to only accept responses to our requests
         Hashtable<String, Object> baseProps = new Hashtable<>();
@@ -216,34 +241,31 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
             debug("modified: " + indexes);
             this.indexes = indexes;
             
-            loadIndexes();
+            OSGiRepository repo = loadIndex("Bundle Management Marketplaces", indexes);
+            
+            shutdownOldRepo();
+    		
+    		this.repository = repo;
         }
         else {
             debug("modified: indexes is unchanged!");
         }
     }
 
-    private void loadIndexes() throws Exception {
-    	Processor p = new Processor();
-    	HttpClient client = new HttpClient();
-		client.setReporter(p);
-		client.setRegistry(p);
-		p.addBasicPlugin(client);
-		
+    private OSGiRepository loadIndex(String name, List<URI> indexes) throws Exception {
+    	
 		OSGiRepository repo = new OSGiRepository();
-		repo.setReporter(p);
-		repo.setRegistry(p);
+		repo.setReporter(processor);
+		repo.setRegistry(processor);
 		
 		Map<String, String> props = new HashMap<>();
-		props.put("name", "Bundle Management Marketplaces");
+		props.put("name", name);
 		props.put("locations", indexes.stream().map(URI::toString).collect(Collectors.joining(",")));
-		props.put("cache", context.getDataFile("httpcache").getAbsolutePath());
+		props.put("cache", httpCacheDir.getAbsolutePath());
 
 		repo.setProperties(props);
 		
-		shutdownOldRepo();
-		
-		this.repository = repo;
+		return repo;
 	}
 
 	private void shutdownOldRepo() {
@@ -281,6 +303,8 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         } catch (InterruptedException e) {
         }
         shutdownOldRepo();
+        
+        client.close();
     }
 
     @Override
@@ -488,7 +512,9 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
                     String resolveRequirements = resolveRequirementsFor(res, request.requirement);
 
                     if (request instanceof ManagementBidRequestDTO) {
-                        Map<Resource, String> resolve = resolver.resolve(requestIdentity, indexes, toRequirementList(resolveRequirements));
+                        Map<Resource, String> resolve = resolver.resolve(requestIdentity, 
+                        		singletonList(loadIndex("Resolving " + requestIdentity, indexes)), 
+                        		toRequirementList(resolveRequirements));
                         debug("resolve size=" + resolve.size());
                         ManagementResponseDTO response = new ManagementResponseDTO();
                         response.code = resolve.size() == 0 ? ALREADY_INSTALLED : BID;
