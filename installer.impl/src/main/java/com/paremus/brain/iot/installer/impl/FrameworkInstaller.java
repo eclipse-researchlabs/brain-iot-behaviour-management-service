@@ -8,6 +8,8 @@ import org.osgi.annotation.versioning.ProviderType;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleException;
 
+import aQute.bnd.http.HttpClient;
+
 import java.io.IOException;
 import java.util.List;
 
@@ -35,13 +37,16 @@ public interface FrameworkInstaller {
      * <p>
      * NB sponsors should be compared with value equality, i.e.
      * {@link Object#equals(Object)}.
+     * @param sponsor The object representing the "owner" of this installation
+     * @param bundleLocations The URIs to install and/or sponsor
+     * @param client The Http Client to use when downloading bundles
      *
      * @return The list of bundles actually installed by this operation, i.e.
      * not including those that were already present.
      * @throws BundleException
      * @throws IOException
      */
-    List<Bundle> addLocations(Object sponsor, List<String> bundleLocations) throws BundleException, IOException;
+    List<Bundle> addLocations(Object sponsor, List<String> bundleLocations, HttpClient client) throws BundleException, IOException;
 
     /**
      * Remove bundles associated with the specified sponsor object.

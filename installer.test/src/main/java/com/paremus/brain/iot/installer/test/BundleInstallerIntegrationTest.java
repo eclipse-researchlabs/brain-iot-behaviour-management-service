@@ -5,17 +5,14 @@
 
 package com.paremus.brain.iot.installer.test;
 
-import eu.brain.iot.eventing.api.EventBus;
-import eu.brain.iot.eventing.api.SmartBehaviour;
-import eu.brain.iot.installer.api.InstallRequestDTO;
-import eu.brain.iot.installer.api.InstallResponseDTO;
-import org.junit.Before;
-import org.junit.Test;
-import org.osgi.framework.BundleContext;
-import org.osgi.service.cm.Configuration;
+import static eu.brain.iot.installer.api.InstallRequestDTO.InstallAction.UNINSTALL;
+import static eu.brain.iot.installer.api.InstallRequestDTO.InstallAction.UPDATE;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import java.io.File;
-import java.net.URI;
+import java.io.IOException;
 import java.util.Collections;
 import java.util.Dictionary;
 import java.util.HashMap;
@@ -26,11 +23,19 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import static eu.brain.iot.installer.api.InstallRequestDTO.InstallAction;
-import static eu.brain.iot.installer.api.InstallRequestDTO.InstallAction.UNINSTALL;
-import static eu.brain.iot.installer.api.InstallRequestDTO.InstallAction.UPDATE;
-import static eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
-import static org.junit.Assert.*;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Ignore;
+import org.junit.Test;
+import org.osgi.framework.BundleContext;
+import org.osgi.service.cm.Configuration;
+
+import eu.brain.iot.eventing.api.EventBus;
+import eu.brain.iot.eventing.api.SmartBehaviour;
+import eu.brain.iot.installer.api.InstallRequestDTO;
+import eu.brain.iot.installer.api.InstallRequestDTO.InstallAction;
+import eu.brain.iot.installer.api.InstallResponseDTO;
+import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
 
 
 public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallResponseDTO> {
@@ -39,10 +44,11 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
     private BundleContext context;
     private EventBus eventBus;
     private File resourceDir;
+	private TestDependencies deps;
 
     @Before
     public void setUp() throws Exception {
-        TestDependencies deps = TestDependencies.waitInstance(5000);
+        deps = TestDependencies.waitInstance(5000);
         assertNotNull("Failed to get test dependencies", deps);
 
         context = deps.context;
@@ -52,17 +58,40 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
 
         String resources = System.getProperty("installer.test.resources", "src/main/resources");
         resourceDir = new File(resources);
+    }
+    
+    @After
+    public void tearDown() throws Exception {
+    	InstallRequestDTO reset = createRequest(null, InstallAction.RESET, null, null);
+    	reset.name = "Uninstall Example Test";
+        eventBus.deliver(reset);
+        InstallResponseDTO response = queue.poll(5, TimeUnit.SECONDS);
+        assertEquals(ResponseCode.SUCCESS, response.code);
+    }
 
-        // configure last_resort handler
-        // index2.xml is a 2-tier index
-        Dictionary<String, Object> props = new Hashtable<>();
-        URI index1 = (new File(resourceDir, "index2.xml")).toURI();
-        props.put("indexes", index1.toString());
+	private void configureBMSAndInstaller(String indexLocation) throws IOException, InterruptedException {
+		// configure last_resort handler
+		boolean inCI = System.getenv("CI") != null;
+
+		Dictionary<String, Object> props = new Hashtable<>();
+        props.put("indexes", indexLocation);
+        
+		if(inCI) {
+        	props.put("connection.settings", System.getenv("CI_PROJECT_DIR") + "/.m2/settings.xml");
+        }
 
         Configuration config = deps.configAdmin.getConfiguration("eu.brain.iot.BehaviourManagementService", "?");
         config.update(props);
+        
+        if(inCI) {
+        	props.remove("indexes");
+        	config = deps.configAdmin.getConfiguration("eu.brain.iot.BundleInstallerService", "?");
+            config.update(props);
+        }
+        
+        
         Thread.sleep(1000);
-    }
+	}
 
     @Override
     public void notify(InstallResponseDTO response) {
@@ -73,11 +102,6 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
 
     @Test
     public void testInstallExample() throws Exception {
-//        String repo = System.getProperty("installer.test.repo",
-//                "/BRAIN-IoT/SmartBehaviourEventBus/eventing-example/single-framework-example/target/index.xml"
-//        );
-//        List<String> repoPath = Collections.singletonList(new File(repo).toURI().toString());
-
         File repo1 = new File(resourceDir, "index-0.0.1.xml");
         File repo2 = new File(resourceDir, "index-0.0.2.xml");
         File repo2bad = new File(resourceDir, "index-0.0.2-bad.xml");
@@ -108,7 +132,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
 
         eventBus.deliver(install);
 
-        response = queue.take();
+        response = queue.poll(10, TimeUnit.SECONDS);
         assertEquals(ResponseCode.FAIL, response.code);
 
         /*
@@ -121,7 +145,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
         bundles.put("com.paremus.brain.iot.example.sensor.impl", "(0.0.1,0.0.2]");
         eventBus.deliver(install);
 
-        response = queue.take();
+        response = queue.poll(10, TimeUnit.SECONDS);
         List<String> fw1 = TestUtils.listBundles(context);
 
         assertEquals(ResponseCode.SUCCESS, response.code);
@@ -141,7 +165,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
         bundles.put("com.paremus.brain.iot.example.sensor.impl", "(0.0.2,0.0.3]");
         eventBus.deliver(install);
 
-        response = queue.take();
+        response = queue.poll(10, TimeUnit.SECONDS);
         List<String> fw2 = TestUtils.listBundles(context);
 
         assertEquals(ResponseCode.FAIL, response.code);
@@ -160,7 +184,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
         bundles.put("com.paremus.brain.iot.example.sensor.impl", "(0.0.2,0.0.3]");
         eventBus.deliver(install);
 
-        response = queue.take();
+        response = queue.poll(10, TimeUnit.SECONDS);
         TestUtils.listBundles(context);
 
         assertEquals(ResponseCode.SUCCESS, response.code);
@@ -176,7 +200,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
         install.name = "Uninstall Example Test";
         eventBus.deliver(install);
 
-        response = queue.take();
+        response = queue.poll(10, TimeUnit.SECONDS);
         TestUtils.listBundles(context);
 
         assertEquals(ResponseCode.SUCCESS, response.code);
@@ -185,10 +209,10 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
          * uninstall all bundles
          */
         InstallRequestDTO reset = createRequest(null, InstallAction.RESET, null, null);
-        install.name = "Uninstall Example Test";
+        reset.name = "Uninstall Example Test";
         eventBus.deliver(reset);
 
-        response = queue.take();
+        response = queue.poll(5, TimeUnit.SECONDS);
         assertEquals(ResponseCode.SUCCESS, response.code);
 
         int finalBundles = context.getBundles().length;
@@ -196,8 +220,15 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
 
     }
 
+    // This test should work, but it's the older version of doing things and for some reason
+    // I can't work out how to reset the tests fully.
     @Test
+    @Ignore
     public void testLastResort() throws Exception {
+    	
+    	// index2.xml is an old-style 2-tier index
+    	configureBMSAndInstaller(new File(resourceDir, "index2.xml").toURI().toString());
+    	
         eventBus.deliver("com.paremus.brain.iot.example.sensor.api.SensorReadingDTO", Collections.emptyMap());
 
         InstallResponseDTO response;
@@ -218,6 +249,34 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
         assertTrue(bundles.stream().anyMatch(s -> s.contains("example.light.impl")));
 
         pause("test last resort");
+    }
+
+    @Test
+    public void testMarketplaceIndex() throws Exception {
+    	
+    	// This is the "official" example marketplace
+    	configureBMSAndInstaller("https://nexus.repository-pert.ismb.it/repository/marketplaces/com.paremus.brain.iot.marketplace/security-light-marketplace/0.0.1-SNAPSHOT/index.xml");
+    	
+    	eventBus.deliver("com.paremus.brain.iot.example.sensor.api.SensorReadingDTO", Collections.emptyMap());
+    	
+    	InstallResponseDTO response;
+    	List<String> bundles;
+    	
+    	response = queue.poll(30, TimeUnit.SECONDS);
+    	bundles = TestUtils.listBundles(context);
+    	
+    	assertTrue(response != null);
+    	assertEquals(ResponseCode.SUCCESS, response.code);
+    	assertTrue(bundles.stream().anyMatch(s -> s.contains("example.behaviour.impl")));
+    	
+    	response = queue.poll(60, TimeUnit.SECONDS);
+    	bundles = TestUtils.listBundles(context);
+    	
+    	assertTrue(response != null);
+    	assertEquals(ResponseCode.SUCCESS, response.code);
+    	assertTrue(bundles.stream().anyMatch(s -> s.contains("example.light.impl")));
+    	
+    	pause("test last resort");
     }
 
     private static void pause(String message) {

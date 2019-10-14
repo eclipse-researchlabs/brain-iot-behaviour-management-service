@@ -5,26 +5,13 @@
 
 package com.paremus.brain.iot.installer.impl;
 
-import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
-import eu.brain.iot.eventing.api.EventBus;
-import eu.brain.iot.eventing.api.SmartBehaviour;
-import eu.brain.iot.installer.api.InstallRequestDTO;
-import eu.brain.iot.installer.api.InstallResolver;
-import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
-import org.osgi.framework.Bundle;
-import org.osgi.framework.BundleContext;
-import org.osgi.framework.VersionRange;
-import org.osgi.framework.wiring.BundleRevision;
-import org.osgi.resource.Requirement;
-import org.osgi.resource.Resource;
-import org.osgi.service.component.annotations.Activate;
-import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.Deactivate;
-import org.osgi.service.component.annotations.Reference;
-import org.osgi.service.component.annotations.ReferenceCardinality;
-import org.osgi.service.log.FormatterLogger;
-import org.osgi.service.log.LoggerFactory;
+import static eu.brain.iot.installer.api.InstallRequestDTO.InstallAction.UNINSTALL;
+import static eu.brain.iot.installer.api.InstallRequestDTO.InstallAction.UPDATE;
+import static org.osgi.framework.Bundle.INSTALLED;
+import static org.osgi.framework.Bundle.RESOLVED;
 
+import java.io.File;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -40,12 +27,37 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-import static eu.brain.iot.installer.api.InstallRequestDTO.InstallAction.UNINSTALL;
-import static eu.brain.iot.installer.api.InstallRequestDTO.InstallAction.UPDATE;
-import static org.osgi.framework.Bundle.INSTALLED;
-import static org.osgi.framework.Bundle.RESOLVED;
+import org.osgi.framework.Bundle;
+import org.osgi.framework.BundleContext;
+import org.osgi.framework.VersionRange;
+import org.osgi.framework.wiring.BundleRevision;
+import org.osgi.resource.Requirement;
+import org.osgi.resource.Resource;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Deactivate;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.osgi.service.log.FormatterLogger;
+import org.osgi.service.log.LoggerFactory;
+import org.osgi.service.metatype.annotations.AttributeDefinition;
+import org.osgi.service.metatype.annotations.Designate;
+import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 
-@Component
+import aQute.bnd.header.Parameters;
+import aQute.bnd.http.HttpClient;
+import aQute.bnd.osgi.Processor;
+import aQute.bnd.osgi.resource.CapReqBuilder;
+import aQute.bnd.repository.osgi.OSGiRepository;
+import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
+import eu.brain.iot.eventing.api.EventBus;
+import eu.brain.iot.eventing.api.SmartBehaviour;
+import eu.brain.iot.installer.api.InstallRequestDTO;
+import eu.brain.iot.installer.api.InstallResolver;
+import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
+
+@Component(configurationPid="eu.brain.iot.BundleInstallerService")
+@Designate(ocd=BundleInstallerImpl.Config.class)
 @SmartBehaviourDefinition(consumed = {InstallRequestDTO.class},
         author = "Paremus", name = "[Brain-IoT] Bundle Installer Service",
         description = "Resolves requirements using supplied indexes and installs all dependencies."
@@ -74,10 +86,35 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
 
     private Thread thread;
 
+	private HttpClient client;
 
+	private Processor processor;
+
+	private File httpCacheDir;
+
+	@ObjectClassDefinition
+    public @interface Config {
+		@AttributeDefinition(description="Connection settings file for index and bundle download", defaultValue="")
+    	public String connection_settings() default "";
+    }
+	
+	
     @Activate
-    void activate(BundleContext context) {
+    void activate(Config config, BundleContext context) throws IOException, Exception {
         this.context = context;
+        httpCacheDir = context.getDataFile("httpcache");
+        
+        processor = new Processor();
+        processor.set(Processor.CONNECTION_SETTINGS, config.connection_settings());
+
+    	client = new HttpClient();
+		client.setReporter(processor);
+		client.setRegistry(processor);
+		client.setCache(httpCacheDir);
+		
+		client.readSettings(processor);
+		
+		processor.addBasicPlugin(client);
         start();
     }
 
@@ -99,6 +136,8 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
             thread.join(2000);
         } catch (InterruptedException e) {
         }
+        
+        client.close();
     }
 
     @Override
@@ -162,7 +201,6 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
         if (version == null || version.isEmpty())
             version = "0";
 
-        List<URI> indexes = getIndexes(request);
         List<Requirement> requirements = getRequirements(request);
 
         if (requirements.isEmpty()) {
@@ -171,8 +209,16 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
 
         debug("Requirements: " + requirements);
 
+        List<OSGiRepository> indexes = getRepositories(request);
         // resolve the request
-        Map<Resource, String> resolve = resolver.resolveInitial(name, indexes, requirements);
+        Map<Resource, String> resolve;
+        try {
+			resolve = resolver.resolveInitial(name, indexes, requirements);
+        } finally {
+        	for(OSGiRepository r : indexes) {
+        		r.close();
+        	}
+        }
         List<String> locations = new ArrayList<>(resolve.values());
 
         debug("Resolution size: %d", resolve.size());
@@ -221,7 +267,7 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
             } else {
                 rollbacks.add(0, () -> {
                     debug("ROLLBACK uninstall");
-                    List<Bundle> bundles = installer.addLocations(oldSponsor, oldLocs);
+                    List<Bundle> bundles = installer.addLocations(oldSponsor, oldLocs, client);
                     for (Bundle b : bundles) {
                         if (!isFragment(b)) {
                             b.start();
@@ -240,7 +286,7 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
                 return null;
             });
 
-            List<Bundle> installed = installer.addLocations(sponsor, locations);
+            List<Bundle> installed = installer.addLocations(sponsor, locations, client);
 
             for (Bundle b : installed) {
                 if (!isFragment(b)) {
@@ -287,20 +333,39 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
         return (bundle.adapt(BundleRevision.class).getTypes() & BundleRevision.TYPE_FRAGMENT) > 0;
     }
 
-    private static List<URI> getIndexes(InstallRequestDTO request) throws BadRequestException {
-        if (request.indexes == null || request.indexes.isEmpty()) {
+    private List<OSGiRepository> getRepositories(InstallRequestDTO request) throws Exception  {
+    	
+    	if (request.indexes == null || request.indexes.isEmpty()) {
             throw new BadRequestException("no indexes in request");
         }
-
-        try {
-            List<URI> indexes = new ArrayList<>();
+    	
+    	List<URI> indexes = new ArrayList<>();
+    	try {
             for (String index : request.indexes) {
                 indexes.add(new URI(index));
             }
-            return indexes;
         } catch (URISyntaxException e) {
             throw new BadRequestException("indexes contains invalid URI: " + e);
         }
+		
+		List<OSGiRepository> repositories = new ArrayList<>(indexes.size());
+		for(URI index : indexes) {
+			
+			OSGiRepository repo = new OSGiRepository();
+			repo.setReporter(processor);
+			repo.setRegistry(processor);
+			
+			Map<String, String> props = new HashMap<>();
+			props.put("name", "Repository for " + index);
+			props.put("locations", index.toString());
+			props.put("cache", httpCacheDir.getAbsolutePath());
+			
+			repo.setProperties(props);
+			
+			repositories.add(repo);
+		}
+		
+		return repositories;
     }
 
     List<Requirement> getRequirements(InstallRequestDTO request) throws BadRequestException {
@@ -323,7 +388,8 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
 
             if (request.requirements != null) {
                 for (String req : request.requirements) {
-                    requirements.add(resolver.parseRequement(req));
+                	Parameters p = new Parameters(req);
+                    requirements.addAll(CapReqBuilder.getRequirementsFrom(p));
                 }
             }
         } catch (Exception e) {

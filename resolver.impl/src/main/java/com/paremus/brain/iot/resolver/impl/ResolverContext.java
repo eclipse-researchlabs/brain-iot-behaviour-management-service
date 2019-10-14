@@ -5,18 +5,18 @@
 package com.paremus.brain.iot.resolver.impl;
 
 import static org.osgi.framework.namespace.IdentityNamespace.IDENTITY_NAMESPACE;
+import static org.osgi.service.repository.ContentNamespace.CAPABILITY_MIME_ATTRIBUTE;
+import static org.osgi.service.repository.ContentNamespace.CAPABILITY_URL_ATTRIBUTE;
+import static org.osgi.service.repository.ContentNamespace.CONTENT_NAMESPACE;
 
 import java.net.URI;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
 
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
@@ -31,16 +31,12 @@ import org.osgi.resource.Namespace;
 import org.osgi.resource.Requirement;
 import org.osgi.resource.Resource;
 import org.osgi.resource.Wiring;
-import org.osgi.service.repository.ContentNamespace;
 import org.osgi.service.repository.Repository;
 import org.osgi.service.resolver.HostedCapability;
 import org.osgi.service.resolver.ResolveContext;
 
-import aQute.bnd.http.HttpClient;
 import aQute.bnd.osgi.resource.CapReqBuilder;
 import aQute.bnd.osgi.resource.ResourceBuilder;
-import aQute.bnd.repository.osgi.OSGiRepository;
-import aQute.bnd.service.url.URLConnector;
 
 public class ResolverContext extends ResolveContext {
 
@@ -52,7 +48,7 @@ public class ResolverContext extends ResolveContext {
     private final BundleContext bundleContext;
 
     // The repositories that will be queries for providers
-    private final Map<URI, Repository> repositories = new HashMap<>();
+    private final List<? extends Repository> repositories;
 
     // A cache of resource->location (URL), generated during resolve and queried
     // after resolve in order to fetch the resource.
@@ -66,8 +62,10 @@ public class ResolverContext extends ResolveContext {
 
     private final Map<Resource, Wiring> wiringMap;
 
-    ResolverContext(BundleContext bundleContext, String name, List<URI> indexes, List<Requirement> requirements, Map<Resource, Wiring> wiringMap) throws Exception {
+    ResolverContext(BundleContext bundleContext, String name, List<? extends Repository> repositories, 
+    		List<Requirement> requirements, Map<Resource, Wiring> wiringMap) throws Exception {
         this.bundleContext = bundleContext;
+        this.repositories = repositories;
         this.wiringMap = (wiringMap != null) ? wiringMap : getWirings(bundleContext);
 
         ResourceBuilder rb = new ResourceBuilder();
@@ -78,45 +76,6 @@ public class ResolverContext extends ResolveContext {
         rb.addRequirements(requirements);
         		
         this.initialResource = rb.build();
-        
-
-        BasicRegistry registry = new BasicRegistry();
-        registry.put(URLConnector.class, new JarURLConnector());
-        registry.put(HttpClient.class, new HttpClient());
-
-        for (URI indexUri : indexes) {
-            // URI cachedIndexUri = getCacheIndexURI(indexUri);
-            Map<String, String> repoProps = new HashMap<>();
-            repoProps.put("locations", indexUri.toString());
-            OSGiRepository repo = new OSGiRepository();
-            repo.setRegistry(registry);
-            repo.setProperties(repoProps);
-
-            Set<String> level2indexes = new HashSet<>();
-
-            // Check for level2 indexes
-            repo.findProviders(requirements).values().forEach(cc -> cc.forEach(cap -> {
-                cap.getResource().getCapabilities("osgi.content").stream()
-                        .filter(c -> MIME_INDEX.equals(c.getAttributes().get("mime")))
-                        .map(c -> (String) c.getAttributes().get("url"))
-                        .findFirst()
-                        .ifPresent(level2indexes::add);
-            }));
-
-            if (level2indexes.isEmpty()) {
-                this.repositories.put(indexUri, repo);
-            } else {
-                // System.out.printf("XXX replacing level-1 index(%s) with: %s\n", indexUri, level2indexes);
-                for (String index : level2indexes) {
-                    repoProps = new HashMap<>();
-                    repoProps.put("locations", index);
-                    OSGiRepository repo2 = new OSGiRepository();
-                    repo2.setRegistry(registry);
-                    repo2.setProperties(repoProps);
-                    this.repositories.put(new URI(index), repo2);
-                }
-            }
-        }
     }
 
     @Override
@@ -147,31 +106,24 @@ public class ResolverContext extends ResolveContext {
         }
 
         // Find from repositories
-        for (Entry<URI, Repository> repoEntry : this.repositories.entrySet()) {
-            Repository repository = repoEntry.getValue();
+        for (Repository repository : this.repositories) {
             Map<Requirement, Collection<Capability>> providers = repository
                     .findProviders(Collections.singleton(requirement));
-            if (providers != null) {
-                Collection<Capability> repoCaps = providers.get(requirement);
-                if (repoCaps != null) {
-                    resultCaps.addAll(repoCaps);
+            Collection<Capability> repoCaps = providers.get(requirement);
+                resultCaps.addAll(repoCaps);
 
-                    for (Capability repoCap : repoCaps) {
-                        // Get the list of physical URIs for this resource.
-                        Resource resource = repoCap.getResource();
-                        // Keep track of which repositories own which resources.
-                        this.resourceRepositoryMap.put(resource, repository);
+            for (Capability repoCap : repoCaps) {
+                // Get the list of physical URIs for this resource.
+                Resource resource = repoCap.getResource();
+                // Keep track of which repositories own which resources.
+                this.resourceRepositoryMap.put(resource, repository);
 
-                        // Resolve the Resource's URI relative to the Repository
-                        // Index URI and save for later.
-                        URI repoIndexUri = repoEntry.getKey();
-                        URI resolvedUri = resolveResourceLocation(resource, repoIndexUri);
-                        if (resolvedUri != null) {
-                            // Cache the resolved URI into the resource URI map,
-                            // which will be used after resolve.
-                            this.resourceLocationMap.put(resource, resolvedUri.toString());
-                        }
-                    }
+                // Save the Resource's URI for later.
+                URI resolvedUri = resolveResourceLocation(resource);
+                if (resolvedUri != null) {
+                    // Cache the resolved URI into the resource URI map,
+                    // which will be used after resolve.
+                    this.resourceLocationMap.put(resource, resolvedUri.toString());
                 }
             }
         }
@@ -228,7 +180,7 @@ public class ResolverContext extends ResolveContext {
         if (repo == null) {
             return -1;
         }
-        for (Repository match : this.repositories.values()) {
+        for (Repository match : this.repositories) {
             if (repo == match) {
                 return index;
             }
@@ -303,28 +255,19 @@ public class ResolverContext extends ResolveContext {
         return location;
     }
 
-    private static URI resolveResourceLocation(Resource resource, URI indexUri) {
-        List<Capability> contentCaps = resource.getCapabilities(ContentNamespace.CONTENT_NAMESPACE);
-        if (contentCaps != null) {
-            for (Capability contentCap : contentCaps) {
-                // Ensure this content entry has the correct MIME type for a
-                // bundle
-                if (MIME_BUNDLE.equals(contentCap.getAttributes().get(ContentNamespace.CAPABILITY_MIME_ATTRIBUTE))) {
-                    // Get the URI attribute in the index, which is either an
-                    // asbolute URI, or a relative URI to be resolved against
-                    // the index URI.
-                    URI rawUri = null;
-                    Object uriObj = contentCap.getAttributes().get(ContentNamespace.CAPABILITY_URL_ATTRIBUTE);
+    private static URI resolveResourceLocation(Resource resource) {
+        List<Capability> contentCaps = resource.getCapabilities(CONTENT_NAMESPACE);
+        for (Capability contentCap : contentCaps) {
+            // Ensure this content entry has the correct MIME type for a bundle
+            if (MIME_BUNDLE.equals(contentCap.getAttributes().get(CAPABILITY_MIME_ATTRIBUTE))) {
+                // Get the URI attribute in the index, if this was relative in the file then
+            	// it will have been made absolute by the Repository implementation for us
+                Object uriObj = contentCap.getAttributes().get(CAPABILITY_URL_ATTRIBUTE);
 
-                    if (uriObj instanceof URI) {
-                        rawUri = (URI) uriObj;
-                    } else if (uriObj instanceof String) {
-                        rawUri = URI.create((String) uriObj);
-                    }
-
-                    if (rawUri != null) {
-                        return indexUri.resolve(rawUri);
-                    }
+                if (uriObj instanceof URI) {
+                    return (URI) uriObj;
+                } else if (uriObj instanceof String) {
+                    return URI.create((String) uriObj);
                 }
             }
         }

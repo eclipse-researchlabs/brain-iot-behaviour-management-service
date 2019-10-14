@@ -7,8 +7,8 @@ package eu.brain.iot.installer.api;
 import org.osgi.resource.Requirement;
 import org.osgi.resource.Resource;
 import org.osgi.resource.Wiring;
+import org.osgi.service.repository.Repository;
 
-import java.net.URI;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +25,7 @@ public interface InstallResolver {
 	 * @return The resources in the resolution, mapped to the URL they are from /to install them from 
 	 * @throws Exception
 	 */
-    Map<Resource, String> resolve(String name, List<URI> indexes, Collection<Requirement> requirements) throws Exception;
+    Map<Resource, String> resolve(String name, List<? extends Repository> repositories, Collection<Requirement> requirements) throws Exception;
 
     /**
      * Resolve the requirements using the specified indexes, 
@@ -37,7 +37,7 @@ public interface InstallResolver {
      * @return The resources in the resolution, mapped to the URL they are from /to install them from 
      * @throws Exception
      */
-    Map<Resource, String> resolveInitial(String name, List<URI> indexes, Collection<Requirement> requirements) throws Exception;
+    Map<Resource, String> resolveInitial(String name, List<? extends Repository> repositories, Collection<Requirement> requirements) throws Exception;
 
     /**
      * Resolve the requirements using the specified indexes, 
@@ -50,21 +50,6 @@ public interface InstallResolver {
      * @return The resources in the resolution, mapped to the URL they are from /to install them from 
      * @throws Exception
      */
-    Map<Resource, String> resolve(String name, List<URI> indexes, Collection<Requirement> requirements, Map<Resource, Wiring> wiringMap) throws Exception;
+    Map<Resource, String> resolve(String name, List<? extends Repository> repositories, Collection<Requirement> requirements, Map<Resource, Wiring> wiringMap) throws Exception;
 
-    /**
-     * Turn a "Require-Capability" string into an OSGi {@link Requirement}
-     * @param requirement
-     * @return
-     */
-    Requirement parseRequement(String requirement);
-
-    /**
-     * Find Behaviour capabilities
-     * @param indexes
-     * @param ldapFilter
-     * @return
-     * @throws Exception
-     */
-    Collection<BehaviourDTO> findBehaviours(List<String> indexes, String ldapFilter) throws Exception;
 }

@@ -12,11 +12,16 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.osgi.framework.BundleContext;
 import org.osgi.resource.Requirement;
 
+import com.paremus.brain.iot.installer.impl.BundleInstallerImpl.Config;
+
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -33,12 +38,18 @@ public class BundleInstallerImplTest {
 
     @Rule
     public MockitoRule rule = MockitoJUnit.rule();
+    
+    @Mock
+    BundleContext context;
+
+    @Mock
+    Config config;
 
     BundleInstallerImpl impl;
     Semaphore semA;
 
     @Before
-    public void start() {
+    public void start() throws IOException, Exception {
         impl = new BundleInstallerImpl();
         impl = Mockito.spy(impl);
 
@@ -49,7 +60,9 @@ public class BundleInstallerImplTest {
             return null;
         }).when(impl).sendResponse(Mockito.any(), Mockito.anyString(), Mockito.any());
 
-        impl.start();
+        Mockito.when(config.connection_settings()).thenReturn("");
+        
+        impl.activate(config, context);
     }
 
     @After
@@ -78,16 +91,24 @@ public class BundleInstallerImplTest {
 
     @Test
     public void testIndexesMissing() throws InterruptedException {
-        InstallRequestDTO event = createRequest("test.IndexesMissing", InstallAction.INSTALL, null);
+        InstallRequestDTO event = createRequest("test.IndexesMissing", InstallAction.INSTALL, null, "foo", "1.0.0");
         impl.notify(event);
         assertTrue(semA.tryAcquire(1, TimeUnit.SECONDS));
         Mockito.verify(impl).sendResponse(Mockito.eq(ResponseCode.BAD_REQUEST), Mockito.contains("no indexes"), Mockito.any());
     }
 
     @Test
+    public void testRequirementsMissing() throws InterruptedException {
+    	InstallRequestDTO event = createRequest("test.IndexesMissing", InstallAction.INSTALL, Arrays.asList("http://brain-iot.org/index.xml"));
+    	impl.notify(event);
+    	assertTrue(semA.tryAcquire(1, TimeUnit.SECONDS));
+    	Mockito.verify(impl).sendResponse(Mockito.eq(ResponseCode.BAD_REQUEST), Mockito.contains("no requirements"), Mockito.any());
+    }
+
+    @Test
     public void testIndexesInvalid() throws InterruptedException {
         InstallRequestDTO event = createRequest("test.IndexesInvalid", InstallAction.INSTALL,
-                Arrays.asList(new String[]{"c:\\invalid"}));
+                Arrays.asList(new String[]{"c:\\invalid"}), "foo", "1.0.0");
         impl.notify(event);
         assertTrue(semA.tryAcquire(1, TimeUnit.SECONDS));
         Mockito.verify(impl).sendResponse(Mockito.eq(ResponseCode.BAD_REQUEST), Mockito.contains("invalid URI"), Mockito.any());
