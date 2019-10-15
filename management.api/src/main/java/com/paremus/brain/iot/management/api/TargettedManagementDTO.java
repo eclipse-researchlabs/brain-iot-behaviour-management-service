@@ -5,7 +5,7 @@
 
 package com.paremus.brain.iot.management.api;
 
-public abstract class ManagementRequestDTO extends ManagementDTO {
+public abstract class TargettedManagementDTO extends ManagementDTO {
 
-    public String requestIdentity;
+	public String targetNode;
 }

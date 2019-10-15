@@ -4,6 +4,8 @@
  */
 package com.paremus.brain.iot.installer.impl;
 
+import static java.util.stream.Collectors.toSet;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -43,6 +45,10 @@ public class FrameworkInstallerImpl implements FrameworkInstaller {
         this.context = context;
     }
 
+    @Override
+    public synchronized Set<Object> getSponsors() {
+    	return bundleSponsors.values().stream().flatMap(Set::stream).collect(toSet());
+    }
 
     @Override
     public synchronized List<Bundle> addLocations(Object sponsor, List<String> bundleLocations, HttpClient client) throws BundleException, IOException {

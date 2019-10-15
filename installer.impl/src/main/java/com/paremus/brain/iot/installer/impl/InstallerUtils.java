@@ -5,7 +5,6 @@
 package com.paremus.brain.iot.installer.impl;
 
 import aQute.bnd.osgi.resource.RequirementBuilder;
-import eu.brain.iot.installer.api.InstallRequestDTO;
 import eu.brain.iot.installer.api.InstallResponseDTO;
 import org.osgi.framework.VersionRange;
 import org.osgi.framework.namespace.BundleNamespace;
@@ -22,7 +21,6 @@ public class InstallerUtils {
         event.code = code;
         event.messages = messages;
         event.requestNode = installRequest.sourceNode;
-        event.installRequest = installRequest;
         return event;
     }
 

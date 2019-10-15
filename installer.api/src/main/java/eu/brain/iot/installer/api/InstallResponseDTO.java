@@ -31,9 +31,9 @@ public class InstallResponseDTO extends BrainIoTEvent {
      */
     public String requestNode;
 
-    /**
-     * InstallCommand to which this response relates
-     */
-    public InstallRequestDTO installRequest;
+//    /**
+//     * InstallCommand to which this response relates
+//     */
+//    public InstallRequestDTO installRequest;
 
 }

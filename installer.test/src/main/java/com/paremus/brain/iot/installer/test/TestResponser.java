@@ -4,9 +4,10 @@
  */
 package com.paremus.brain.iot.installer.test;
 
+import com.paremus.brain.iot.management.api.ManagementResponseDTO;
+
 import eu.brain.iot.eventing.api.SmartBehaviour;
-import eu.brain.iot.installer.api.InstallResponseDTO;
 
 public interface TestResponser {
-    void addListener(SmartBehaviour<InstallResponseDTO> listener);
+    void addListener(SmartBehaviour<ManagementResponseDTO> listener);
 }

@@ -25,4 +25,17 @@ public interface BehaviourManagement {
      * @param targetNode
      */
     void installBehaviour(BehaviourDTO behaviour, String targetNode);
+    
+    /**
+     * Uninstall the named behaviour
+     * @param behaviour
+     * @param targetNode
+     */
+    void uninstallBehaviour(BehaviourDTO behaviour, String targetNode);
+    
+    /**
+     * Uninstall all of the behaviours on the target node
+     * @param targetNode
+     */
+    void resetNode(String targetNode);
 }

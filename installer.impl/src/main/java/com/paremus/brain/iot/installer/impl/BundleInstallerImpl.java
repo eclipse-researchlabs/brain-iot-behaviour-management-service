@@ -5,8 +5,6 @@
 
 package com.paremus.brain.iot.installer.impl;
 
-import static eu.brain.iot.installer.api.InstallRequestDTO.InstallAction.UNINSTALL;
-import static eu.brain.iot.installer.api.InstallRequestDTO.InstallAction.UPDATE;
 import static org.osgi.framework.Bundle.INSTALLED;
 import static org.osgi.framework.Bundle.RESOLVED;
 
@@ -17,10 +15,12 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -29,7 +29,6 @@ import java.util.stream.Collectors;
 
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
-import org.osgi.framework.VersionRange;
 import org.osgi.framework.wiring.BundleRevision;
 import org.osgi.resource.Requirement;
 import org.osgi.resource.Resource;
@@ -43,26 +42,26 @@ import org.osgi.service.log.LoggerFactory;
 import org.osgi.service.metatype.annotations.AttributeDefinition;
 import org.osgi.service.metatype.annotations.Designate;
 import org.osgi.service.metatype.annotations.ObjectClassDefinition;
+import org.osgi.util.promise.Deferred;
+import org.osgi.util.promise.Promise;
+import org.osgi.util.promise.PromiseFactory;
+
+import com.paremus.brain.iot.installer.impl.InstallRequestDTO.InstallAction;
 
 import aQute.bnd.header.Parameters;
 import aQute.bnd.http.HttpClient;
 import aQute.bnd.osgi.Processor;
 import aQute.bnd.osgi.resource.CapReqBuilder;
 import aQute.bnd.repository.osgi.OSGiRepository;
-import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
 import eu.brain.iot.eventing.api.EventBus;
-import eu.brain.iot.eventing.api.SmartBehaviour;
-import eu.brain.iot.installer.api.InstallRequestDTO;
+import eu.brain.iot.installer.api.FunctionInstaller;
 import eu.brain.iot.installer.api.InstallResolver;
+import eu.brain.iot.installer.api.InstallResponseDTO;
 import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
 
 @Component(configurationPid="eu.brain.iot.BundleInstallerService")
 @Designate(ocd=BundleInstallerImpl.Config.class)
-@SmartBehaviourDefinition(consumed = {InstallRequestDTO.class},
-        author = "Paremus", name = "[Brain-IoT] Bundle Installer Service",
-        description = "Resolves requirements using supplied indexes and installs all dependencies."
-)
-public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
+public class BundleInstallerImpl implements FunctionInstaller {
 
     @Reference(service = LoggerFactory.class, cardinality = ReferenceCardinality.OPTIONAL)
     private FormatterLogger log;
@@ -80,7 +79,9 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
 
     private final BlockingQueue<InstallRequestDTO> queue = new LinkedBlockingQueue<>();
 
-    private final Map<String, String> sponsors = new HashMap<>();
+    private final Set<String> sponsors = new HashSet<>();
+    
+    private final PromiseFactory promiseFactory = new PromiseFactory(null);
 
     private BundleContext context;
 
@@ -144,42 +145,122 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
     }
 
     @Override
-    public void notify(InstallRequestDTO event) {
-        queue.add(event);
+	public Promise<InstallResponseDTO> installFunction(String symbolicName, String version, List<String> indexes,
+			List<String> requirements) {
+		Deferred<InstallResponseDTO> response = promiseFactory.deferred();
+		
+		try {
+			InstallRequestDTO dto = new InstallRequestDTO();
+			dto.action = InstallAction.INSTALL;
+			if(indexes != null) dto.indexes.addAll(indexes);
+			if(requirements != null) dto.requirements.addAll(requirements);
+			dto.response = response;
+			dto.sponsor = symbolicName + ":" + ((version == null) ? "0.0.0" : version);
+			
+			queue.add(dto);
+		} catch (Exception e) {
+			response.fail(e);
+		}
+		
+		return response.getPromise();
+	}
+
+    @Override
+    public Promise<InstallResponseDTO> updateFunction(String oldSymbolicName, String oldVersion, 
+    		String newSymbolicName, String newVersion, List<String> indexes, List<String> requirements) {
+    	Deferred<InstallResponseDTO> response = promiseFactory.deferred();
+    	
+    	try {
+    		InstallRequestDTO dto = new InstallRequestDTO();
+    		dto.action = InstallAction.UPDATE;
+    		if(indexes != null) dto.indexes.addAll(indexes);
+			if(requirements != null) dto.requirements.addAll(requirements);
+    		dto.response = response;
+    		dto.oldSponsor = oldSymbolicName + ":" + ((oldVersion == null) ? "0.0.0" : oldVersion);
+    		dto.sponsor = newSymbolicName + ":" + ((newVersion == null) ? "0.0.0" : newVersion);
+    		
+    		queue.add(dto);
+    	} catch (Exception e) {
+    		response.fail(e);
+    	}
+    	
+    	return response.getPromise();
     }
+
+	@Override
+	public Promise<InstallResponseDTO> uninstallFunction(String symbolicName, String version) {
+		Deferred<InstallResponseDTO> response = promiseFactory.deferred();
+		
+		try {
+			InstallRequestDTO dto = new InstallRequestDTO();
+			dto.action = InstallAction.UNINSTALL;
+			dto.response = response;
+			dto.sponsor = symbolicName + ":" + version;
+			
+			queue.add(dto);
+		} catch (Exception e) {
+			response.fail(e);
+		}
+		
+		return response.getPromise();
+	}
+
+	@Override
+	public Map<String, String> listInstalledFunctions() {
+		return installer.getSponsors().stream()
+				.map(o -> String.valueOf(o).split(":", 2))
+				.collect(Collectors.toMap(s -> s[0], s -> s.length == 1 ? "0.0.0" : s[1]));
+	}
+
+	@Override
+	public Promise<InstallResponseDTO> resetNode() {
+		Deferred<InstallResponseDTO> response = promiseFactory.deferred();
+		
+		try {
+			InstallRequestDTO dto = new InstallRequestDTO();
+			dto.action = InstallAction.RESET;
+			dto.response = response;
+			
+			queue.add(dto);
+		} catch (Exception e) {
+			response.fail(e);
+		}
+		
+		return response.getPromise();
+	}
 
     // package access for Mockito
     void sendResponse(ResponseCode code, String message, InstallRequestDTO request) {
         if (log != null)
             log.info("sendResponse: code=%s message=%s\n", code, message);
-        eventBus.deliver(InstallerUtils.createResponse(code, Collections.singletonList(message), request));
+        // Force a thread switch to release the installer thread
+        promiseFactory.executor().execute(() ->
+        	request.response.resolve(InstallerUtils.createResponse(code, Collections.singletonList(message), request)));
     }
 
     private void sendResponse(ResponseCode code, List<String> messages, InstallRequestDTO request) {
         if (log != null)
             log.info("sendResponse: code=%s messages=%s\n", code, messages);
-        eventBus.deliver(InstallerUtils.createResponse(code, messages, request));
+        // Force a thread switch to release the installer thread
+        promiseFactory.executor().execute(() ->
+    		request.response.resolve(InstallerUtils.createResponse(code, messages, request)));
     }
 
     private List<String> uninstall(InstallRequestDTO request) throws Exception {
         List<Bundle> uninstalled = new ArrayList<>();
 
-        if (request.action.equals(UNINSTALL)) {
-            String symbolicName = request.symbolicName;
-            if (symbolicName == null || symbolicName.isEmpty()) {
+        if (request.action.equals(InstallRequestDTO.InstallAction.UNINSTALL)) {
+            String sponsor = request.sponsor;
+            if (sponsor == null || sponsor.isEmpty()) {
                 throw new BadRequestException("deployment symbolic name not set");
             }
 
-            String sponsor = sponsors.remove(symbolicName);
-            if (sponsor != null) {
-                uninstalled.addAll(installer.removeSponsor(sponsor));
-            }
+            uninstalled.addAll(installer.removeSponsor(sponsor));
         } else {
-            Iterator<String> iterator = sponsors.values().iterator();
+            Iterator<Object> iterator = installer.getSponsors().iterator();
 
             while (iterator.hasNext()) {
-                String sponsor = iterator.next();
-                iterator.remove();
+                Object sponsor = iterator.next();
                 List<Bundle> removed = installer.removeSponsor(sponsor);
                 uninstalled.addAll(removed);
             }
@@ -189,20 +270,12 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
     }
 
     private List<String> install(InstallRequestDTO request) throws Exception {
-        final boolean update = request.action.equals(UPDATE);
-        String name = request.name;
-        String symbolicName = request.symbolicName;
-        String version = request.version;
+        final boolean update = request.action.equals(InstallRequestDTO.InstallAction.UPDATE);
+        final String sponsor = request.sponsor;
 
-        if (symbolicName == null || symbolicName.isEmpty()) {
+        if (sponsor == null || sponsor.isEmpty()) {
             throw new BadRequestException("symbolic name not set");
         }
-
-        if (name == null || name.isEmpty())
-            name = symbolicName;
-
-        if (version == null || version.isEmpty())
-            version = "0";
 
         List<Requirement> requirements = getRequirements(request);
 
@@ -216,7 +289,7 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
         // resolve the request
         Map<Resource, String> resolve;
         try {
-			resolve = resolver.resolveInitial(name, indexes, requirements);
+			resolve = resolver.resolveInitial(sponsor, indexes, requirements);
         } finally {
         	for(OSGiRepository r : indexes) {
         		r.close();
@@ -226,9 +299,9 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
 
         debug("Resolution size: %d", resolve.size());
 
-
-        final String sponsor = request.symbolicName + '-' + request.version;
-        final String oldSponsor = sponsors.put(request.symbolicName, sponsor);
+        sponsors.add(sponsor);
+        final String oldSponsor = request.oldSponsor;
+        sponsors.remove(oldSponsor);
 
         if (resolve.size() == 0) {
             return Collections.singletonList(sponsor + " is already installed");
@@ -241,7 +314,7 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
 
         rollbacks.add(0, () -> {
             debug("ROLLBACK sponsor");
-            sponsors.put(request.symbolicName, oldSponsor);
+            sponsors.add(oldSponsor);
             return null;
         });
 
@@ -375,20 +448,6 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
         List<Requirement> requirements = new ArrayList<>();
 
         try {
-            if (request.bundles != null) {
-                for (Map.Entry<String, String> entry : request.bundles.entrySet()) {
-                    String name = entry.getKey();
-                    String version = entry.getValue();
-                    VersionRange range = null;
-
-                    if (version != null && !version.isEmpty()) {
-                        range = VersionRange.valueOf(version);
-                    }
-
-                    requirements.add(InstallerUtils.bundleRequirement(name, range));
-                }
-            }
-
             if (request.requirements != null) {
                 for (String req : request.requirements) {
                 	Parameters p = new Parameters(req);
@@ -424,8 +483,8 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
 
                 try {
                     request = queue.take();
-                    debug("\n\nRequest: action=%s name=%s(%s) version=%s",
-                            request.action, request.name, request.symbolicName, request.version);
+                    debug("\n\nRequest: action=%s sponsor=%s",
+                            request.action, request.sponsor);
 
                     if (request.action == null)
                         throw new BadRequestException("unknown action: null");

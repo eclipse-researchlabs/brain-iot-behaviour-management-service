@@ -11,5 +11,7 @@ public abstract class ManagementDTO extends BrainIoTEvent {
 
     public String requestIdentity;
     
-    public String requirement;
+    public String symbolicName;
+
+    public String version;
 }

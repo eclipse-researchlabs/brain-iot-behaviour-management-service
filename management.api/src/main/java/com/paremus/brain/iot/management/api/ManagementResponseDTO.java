@@ -8,7 +8,7 @@ package com.paremus.brain.iot.management.api;
 /**
  * An response event sent by the behaviour management service
  */
-public class ManagementResponseDTO extends ManagementDTO {
+public class ManagementResponseDTO extends TargettedManagementDTO {
     public enum ResponseCode {
         /**
          * bid to install requirements
@@ -34,7 +34,5 @@ public class ManagementResponseDTO extends ManagementDTO {
     public ResponseCode code;
 
     public Integer bid;
-
-    public String targetNode;
 
 }

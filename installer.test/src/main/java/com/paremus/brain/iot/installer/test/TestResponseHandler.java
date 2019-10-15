@@ -4,31 +4,33 @@
  */
 package com.paremus.brain.iot.installer.test;
 
-import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
-import eu.brain.iot.eventing.api.SmartBehaviour;
-import eu.brain.iot.installer.api.InstallResponseDTO;
-import org.osgi.service.component.annotations.Component;
-
 import java.util.ArrayList;
 import java.util.List;
 
+import org.osgi.service.component.annotations.Component;
+
+import com.paremus.brain.iot.management.api.ManagementResponseDTO;
+
+import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
+import eu.brain.iot.eventing.api.SmartBehaviour;
+
 @Component
-@SmartBehaviourDefinition(consumed = {InstallResponseDTO.class},
+@SmartBehaviourDefinition(consumed = {ManagementResponseDTO.class},
         author = "Paremus", name = "[Brain-IoT] Bundle Installer Test",
         description = " Test response handler"
 )
-public class TestResponseHandler implements SmartBehaviour<InstallResponseDTO>, TestResponser {
-    private List<SmartBehaviour<InstallResponseDTO>> listeners = new ArrayList<>();
+public class TestResponseHandler implements SmartBehaviour<ManagementResponseDTO>, TestResponser {
+    private List<SmartBehaviour<ManagementResponseDTO>> listeners = new ArrayList<>();
 
     @Override
-    public void notify(InstallResponseDTO response) {
-        for (SmartBehaviour<InstallResponseDTO> listener : listeners) {
+    public void notify(ManagementResponseDTO response) {
+        for (SmartBehaviour<ManagementResponseDTO> listener : listeners) {
             listener.notify(response);
         }
     }
 
     @Override
-    public void addListener(SmartBehaviour<InstallResponseDTO> listener) {
+    public void addListener(SmartBehaviour<ManagementResponseDTO> listener) {
         listeners.add(listener);
     }
 }

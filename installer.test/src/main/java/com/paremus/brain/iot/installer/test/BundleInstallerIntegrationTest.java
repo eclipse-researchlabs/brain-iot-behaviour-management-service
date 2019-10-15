@@ -5,8 +5,9 @@
 
 package com.paremus.brain.iot.installer.test;
 
-import static eu.brain.iot.installer.api.InstallRequestDTO.InstallAction.UNINSTALL;
-import static eu.brain.iot.installer.api.InstallRequestDTO.InstallAction.UPDATE;
+import static com.paremus.brain.iot.management.api.ManagementResponseDTO.ResponseCode.BID;
+import static java.util.Arrays.asList;
+import static java.util.Collections.singletonMap;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -15,10 +16,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Dictionary;
-import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -29,20 +28,25 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.osgi.framework.BundleContext;
 import org.osgi.service.cm.Configuration;
+import org.osgi.util.promise.Promise;
 
+import com.paremus.brain.iot.management.api.ManagementResponseDTO;
+
+import aQute.bnd.osgi.resource.CapReqBuilder;
+import aQute.bnd.osgi.resource.ResourceUtils;
 import eu.brain.iot.eventing.api.EventBus;
 import eu.brain.iot.eventing.api.SmartBehaviour;
-import eu.brain.iot.installer.api.InstallRequestDTO;
-import eu.brain.iot.installer.api.InstallRequestDTO.InstallAction;
+import eu.brain.iot.installer.api.FunctionInstaller;
 import eu.brain.iot.installer.api.InstallResponseDTO;
 import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
 
 
-public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallResponseDTO> {
-
-    private final BlockingQueue<InstallResponseDTO> queue = new LinkedBlockingQueue<>();
+public class BundleInstallerIntegrationTest implements SmartBehaviour<ManagementResponseDTO> {
+	
+    private final BlockingQueue<ManagementResponseDTO> queue = new LinkedBlockingQueue<>();
     private BundleContext context;
     private EventBus eventBus;
+    private FunctionInstaller installer;
     private File resourceDir;
 	private TestDependencies deps;
 
@@ -53,6 +57,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
 
         context = deps.context;
         eventBus = deps.eventBus;
+        installer = deps.installer;
 
         deps.responder.addListener(this);
 
@@ -62,11 +67,12 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
     
     @After
     public void tearDown() throws Exception {
-    	InstallRequestDTO reset = createRequest(null, InstallAction.RESET, null, null);
-    	reset.name = "Uninstall Example Test";
-        eventBus.deliver(reset);
-        InstallResponseDTO response = queue.poll(5, TimeUnit.SECONDS);
-        assertEquals(ResponseCode.SUCCESS, response.code);
+    	installer.resetNode()
+    		.timeout(10000)
+    		.thenAccept(response -> assertEquals(ResponseCode.SUCCESS, response.code))
+    		.getValue();
+    	
+    	queue.clear();
     }
 
 	private void configureBMSAndInstaller(String indexLocation) throws IOException, InterruptedException {
@@ -94,9 +100,8 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
 	}
 
     @Override
-    public void notify(InstallResponseDTO response) {
-        System.err.printf("TEST response action=%s code=%s message=%s\n",
-                response.installRequest.action, response.code, response.messages);
+    public void notify(ManagementResponseDTO response) {
+        System.err.printf("TEST response code=%s \n", response.code);
         queue.add(response);
     }
 
@@ -114,41 +119,38 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
         List<String> index2 = Collections.singletonList(repo2.toURI().toString());
         List<String> index2bad = Collections.singletonList(repo2bad.toURI().toString());
 
-        Map<String, String> bundles = new HashMap<>();
-
         final int initialBundles = context.getBundles().length;
 
-        InstallRequestDTO install = createRequest("test.example", InstallAction.INSTALL, index1, bundles);
         InstallResponseDTO response = null;
 
         TestUtils.listBundles(context);
+        
+        assertEquals(Collections.emptyMap(), installer.listInstalledFunctions());
 
         /*
          * resolution failure
          */
-        install.name = "Resolution Failure Test";
-        bundles.put("com.paremus.brain.iot.example.behaviour.impl", "9.9.9");
 
+        Promise<InstallResponseDTO> promise = installer.installFunction("test.example", "1.0.0", index1, 
+        		asList(createBundleRequirement("com.paremus.brain.iot.example.behaviour.impl", "9.9.9")));
 
-        eventBus.deliver(install);
-
-        response = queue.poll(10, TimeUnit.SECONDS);
+        response = promise.timeout(10000).getValue();
         assertEquals(ResponseCode.FAIL, response.code);
+        assertEquals(Collections.emptyMap(), installer.listInstalledFunctions());
 
         /*
          * install example-1
          */
-        install.name = "Install Example-1";
-        install.version = "1";
-        bundles.put("com.paremus.brain.iot.example.behaviour.impl", null);
-        bundles.put("com.paremus.brain.iot.example.light.impl", "0.0.1");
-        bundles.put("com.paremus.brain.iot.example.sensor.impl", "(0.0.1,0.0.2]");
-        eventBus.deliver(install);
-
-        response = queue.poll(10, TimeUnit.SECONDS);
+        promise = installer.installFunction("Install-Example-1", "1", index1, 
+        		asList(createBundleRequirement("com.paremus.brain.iot.example.behaviour.impl", "0.0.0"),
+        				createBundleRequirement("com.paremus.brain.iot.example.light.impl", "0.0.1"),
+        				createBundleRequirement("com.paremus.brain.iot.example.sensor.impl", "(0.0.1,0.0.2]")));
+        
+        response = promise.timeout(10000).getValue();
         List<String> fw1 = TestUtils.listBundles(context);
 
         assertEquals(ResponseCode.SUCCESS, response.code);
+        assertEquals(singletonMap("Install-Example-1", "1"), installer.listInstalledFunctions());
         int added1 = response.messages.size();
         assertTrue("expect >10 bundles", added1 > 10);
         pause("install example-1");
@@ -156,38 +158,32 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
         /*
          * bad update example-2
          */
-        install.action = UPDATE;
-        install.name = "Bad Update Example-2";
-        install.version = "2";
-        install.indexes = index2bad;
-        bundles.put("com.paremus.brain.iot.example.behaviour.impl", "0.0.2");
-        bundles.put("com.paremus.brain.iot.example.light.impl", "0.0.2");
-        bundles.put("com.paremus.brain.iot.example.sensor.impl", "(0.0.2,0.0.3]");
-        eventBus.deliver(install);
-
-        response = queue.poll(10, TimeUnit.SECONDS);
+        promise = installer.updateFunction("Install-Example-1", "1", "Bad Update Example-2", "2", index2bad, 
+        		asList(createBundleRequirement("com.paremus.brain.iot.example.behaviour.impl", "0.0.2"),
+        				createBundleRequirement("com.paremus.brain.iot.example.light.impl", "0.0.2"),
+        				createBundleRequirement("com.paremus.brain.iot.example.sensor.impl",  "(0.0.2,0.0.3]")));
+        
+        response = promise.timeout(10000).getValue();
         List<String> fw2 = TestUtils.listBundles(context);
 
         assertEquals(ResponseCode.FAIL, response.code);
+        assertEquals(singletonMap("Install-Example-1", "1"), installer.listInstalledFunctions());
         assertEquals("FW state should have rolled-back", fw1, fw2);
         pause("bad update example-2");
 
         /*
          * update example-2
          */
-        install.action = UPDATE;
-        install.name = "Install Example-2";
-        install.version = "2";
-        install.indexes = index2;
-        bundles.put("com.paremus.brain.iot.example.behaviour.impl", "0.0.2");
-        bundles.put("com.paremus.brain.iot.example.light.impl", "0.0.2");
-        bundles.put("com.paremus.brain.iot.example.sensor.impl", "(0.0.2,0.0.3]");
-        eventBus.deliver(install);
-
-        response = queue.poll(10, TimeUnit.SECONDS);
+        promise = installer.updateFunction("Install-Example-1", "1", "Install-Example-2", "2", index2, 
+        		asList(createBundleRequirement("com.paremus.brain.iot.example.behaviour.impl", "0.0.2"),
+        				createBundleRequirement("com.paremus.brain.iot.example.light.impl", "0.0.2"),
+        				createBundleRequirement("com.paremus.brain.iot.example.sensor.impl", "(0.0.2,0.0.3]")));
+        
+        response = promise.timeout(10000).getValue();
         TestUtils.listBundles(context);
 
         assertEquals(ResponseCode.SUCCESS, response.code);
+        assertEquals(singletonMap("Install-Example-2", "2"), installer.listInstalledFunctions());
         int added2 = response.messages.size();
         assertEquals("update 3 changed bundles", 3, added2);
         pause("update example-2");
@@ -196,23 +192,18 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
         /*
          * uninstall example
          */
-        install.action = UNINSTALL;
-        install.name = "Uninstall Example Test";
-        eventBus.deliver(install);
-
-        response = queue.poll(10, TimeUnit.SECONDS);
+        promise = installer.uninstallFunction("Install-Example-2", "2");
+        response = promise.timeout(10000).getValue();
         TestUtils.listBundles(context);
 
         assertEquals(ResponseCode.SUCCESS, response.code);
+        assertEquals(Collections.emptyMap(), installer.listInstalledFunctions());
 
         /*
          * uninstall all bundles
          */
-        InstallRequestDTO reset = createRequest(null, InstallAction.RESET, null, null);
-        reset.name = "Uninstall Example Test";
-        eventBus.deliver(reset);
-
-        response = queue.poll(5, TimeUnit.SECONDS);
+        promise = installer.resetNode();
+        response = promise.timeout(10000).getValue();
         assertEquals(ResponseCode.SUCCESS, response.code);
 
         int finalBundles = context.getBundles().length;
@@ -220,7 +211,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
 
     }
 
-    // This test should work, but it's the older version of doing things and for some reason
+    // This test used to work, but it's the older version of doing things and for some reason
     // I can't work out how to reset the tests fully.
     @Test
     @Ignore
@@ -231,7 +222,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
     	
         eventBus.deliver("com.paremus.brain.iot.example.sensor.api.SensorReadingDTO", Collections.emptyMap());
 
-        InstallResponseDTO response;
+        ManagementResponseDTO response;
         List<String> bundles;
 
         response = queue.poll(10, TimeUnit.SECONDS);
@@ -259,21 +250,32 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
     	
     	eventBus.deliver("com.paremus.brain.iot.example.sensor.api.SensorReadingDTO", Collections.emptyMap());
     	
-    	InstallResponseDTO response;
+    	ManagementResponseDTO response;
     	List<String> bundles;
+    	
+    	response = queue.poll(10, TimeUnit.SECONDS);
+    	assertEquals(BID, response.code);
+    	assertEquals("com.paremus.brain.iot.example.behaviour.impl", response.symbolicName);
+    	assertEquals("0.0.1.SNAPSHOT", response.version);
+    	
+
+    	response = queue.poll(30, TimeUnit.SECONDS);
+    	bundles = TestUtils.listBundles(context);
+    	
+    	assertTrue(response != null);
+    	assertEquals(ManagementResponseDTO.ResponseCode.INSTALL_OK, response.code);
+    	assertTrue(bundles.stream().anyMatch(s -> s.contains("example.behaviour.impl")));
+    	
+    	response = queue.poll(10, TimeUnit.SECONDS);
+    	assertEquals(BID, response.code);
+    	assertEquals("com.paremus.brain.iot.example.light.impl", response.symbolicName);
+    	assertEquals("0.0.1.SNAPSHOT", response.version);
     	
     	response = queue.poll(30, TimeUnit.SECONDS);
     	bundles = TestUtils.listBundles(context);
     	
     	assertTrue(response != null);
-    	assertEquals(ResponseCode.SUCCESS, response.code);
-    	assertTrue(bundles.stream().anyMatch(s -> s.contains("example.behaviour.impl")));
-    	
-    	response = queue.poll(60, TimeUnit.SECONDS);
-    	bundles = TestUtils.listBundles(context);
-    	
-    	assertTrue(response != null);
-    	assertEquals(ResponseCode.SUCCESS, response.code);
+    	assertEquals(ManagementResponseDTO.ResponseCode.INSTALL_OK, response.code);
     	assertTrue(bundles.stream().anyMatch(s -> s.contains("example.light.impl")));
     	
     	pause("test last resort");
@@ -298,13 +300,12 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<InstallRes
         }
     }
 
-    private static InstallRequestDTO createRequest(String sn, InstallAction action, List<String> repoPath, Map<String, String> bundles) {
-        InstallRequestDTO request = new InstallRequestDTO();
-        request.symbolicName = sn;
-        request.action = action;
-        request.indexes = repoPath;
-        request.bundles = bundles;
-        return request;
+    private String createBundleRequirement(String symbolicName, String versionRange) {
+    	try {
+			return ResourceUtils.toRequireCapability(CapReqBuilder.createBundleRequirement(symbolicName, versionRange).buildSyntheticRequirement());
+		} catch (Exception e) {
+			throw new RuntimeException();
+		}
     }
-
+    
 }

@@ -5,9 +5,13 @@
 
 package com.paremus.brain.iot.installer.impl;
 
-import eu.brain.iot.installer.api.InstallRequestDTO;
-import eu.brain.iot.installer.api.InstallRequestDTO.InstallAction;
-import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
+import static java.util.Collections.singletonList;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+import java.io.IOException;
+import java.util.Arrays;
+
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -17,26 +21,19 @@ import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.osgi.framework.BundleContext;
-import org.osgi.resource.Requirement;
+import org.osgi.util.promise.Promise;
 
 import com.paremus.brain.iot.installer.impl.BundleInstallerImpl.Config;
 
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import eu.brain.iot.installer.api.InstallResponseDTO;
+import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
 
 
 public class BundleInstallerImplTest {
 
-    @Rule
+    private static final String IDENTITY_REQUIREMENT = "osgi.identity;filter:=(osgi.identity=foo)";
+
+	@Rule
     public MockitoRule rule = MockitoJUnit.rule();
     
     @Mock
@@ -46,19 +43,11 @@ public class BundleInstallerImplTest {
     Config config;
 
     BundleInstallerImpl impl;
-    Semaphore semA;
 
     @Before
     public void start() throws IOException, Exception {
         impl = new BundleInstallerImpl();
         impl = Mockito.spy(impl);
-
-        semA = new Semaphore(0);
-
-        Mockito.doAnswer(i -> {
-            semA.release();
-            return null;
-        }).when(impl).sendResponse(Mockito.any(), Mockito.anyString(), Mockito.any());
 
         Mockito.when(config.connection_settings()).thenReturn("");
         
@@ -71,90 +60,30 @@ public class BundleInstallerImplTest {
     }
 
     @Test
-    public void testParseRequireBundle() throws BadRequestException {
-        Map<String, String> bundles = new LinkedHashMap<>();
-        bundles.put("foo", "1.0.0");
-        bundles.put("bar", "[1.0,1.1)");
-        bundles.put("baz", "[2.0,3.0)");
-        bundles.put("fnarg", null);
-
-        InstallRequestDTO request = new InstallRequestDTO();
-        request.bundles = bundles;
-
-        List<Requirement> actual = impl.getRequirements(request);
-
-        assertEquals("(&(osgi.wiring.bundle=foo)(bundle-version>=1.0.0))", actual.get(0).getDirectives().get("filter"));
-        assertEquals("(&(osgi.wiring.bundle=bar)(bundle-version>=1.0.0)(!(bundle-version>=1.1.0)))", actual.get(1).getDirectives().get("filter"));
-        assertEquals("(&(osgi.wiring.bundle=baz)(bundle-version>=2.0.0)(!(bundle-version>=3.0.0)))", actual.get(2).getDirectives().get("filter"));
-        assertEquals("(osgi.wiring.bundle=fnarg)", actual.get(3).getDirectives().get("filter"));
+    public void testIndexesMissing() throws Exception {
+        Promise<InstallResponseDTO> promise = impl.installFunction("foo", "1.0.0", null, singletonList(IDENTITY_REQUIREMENT));
+        
+        InstallResponseDTO value = promise.timeout(1000).getValue();
+        assertEquals(ResponseCode.BAD_REQUEST, value.code);
+        assertTrue(value.messages.toString(), value.messages.contains("no indexes in request"));
     }
 
     @Test
-    public void testIndexesMissing() throws InterruptedException {
-        InstallRequestDTO event = createRequest("test.IndexesMissing", InstallAction.INSTALL, null, "foo", "1.0.0");
-        impl.notify(event);
-        assertTrue(semA.tryAcquire(1, TimeUnit.SECONDS));
-        Mockito.verify(impl).sendResponse(Mockito.eq(ResponseCode.BAD_REQUEST), Mockito.contains("no indexes"), Mockito.any());
+    public void testRequirementsMissing() throws Exception {
+    	Promise<InstallResponseDTO> promise = impl.installFunction("foo", "1.0.0", Arrays.asList("http://brain-iot.org/index.xml"), null);
+    	
+    	InstallResponseDTO value = promise.timeout(1000).getValue();
+    	assertEquals(ResponseCode.BAD_REQUEST, value.code);
+    	assertTrue(value.messages.toString(), value.messages.contains("no requirements in request"));
     }
 
     @Test
-    public void testRequirementsMissing() throws InterruptedException {
-    	InstallRequestDTO event = createRequest("test.IndexesMissing", InstallAction.INSTALL, Arrays.asList("http://brain-iot.org/index.xml"));
-    	impl.notify(event);
-    	assertTrue(semA.tryAcquire(1, TimeUnit.SECONDS));
-    	Mockito.verify(impl).sendResponse(Mockito.eq(ResponseCode.BAD_REQUEST), Mockito.contains("no requirements"), Mockito.any());
-    }
-
-    @Test
-    public void testIndexesInvalid() throws InterruptedException {
-        InstallRequestDTO event = createRequest("test.IndexesInvalid", InstallAction.INSTALL,
-                Arrays.asList(new String[]{"c:\\invalid"}), "foo", "1.0.0");
-        impl.notify(event);
-        assertTrue(semA.tryAcquire(1, TimeUnit.SECONDS));
-        Mockito.verify(impl).sendResponse(Mockito.eq(ResponseCode.BAD_REQUEST), Mockito.contains("invalid URI"), Mockito.any());
-    }
-
-    @Test
-    public void testBadRequest() throws InterruptedException {
-        Map<String, String> bundles = new HashMap<>();
-
-        InstallRequestDTO event = createRequest("test.BadRequest", InstallAction.INSTALL,
-                Arrays.asList(new String[]{"http://brain-iot.org/index.xml"}), bundles);
-
-        bundles.put("wibble", "a.2.3.q");
-
-        impl.notify(event);
-        assertTrue(semA.tryAcquire(1, TimeUnit.SECONDS));
-        Mockito.verify(impl).sendResponse(Mockito.eq(ResponseCode.BAD_REQUEST), Mockito.contains("invalid range"), Mockito.any());
-
-        bundles.put("wibble", "[1.2.3,1.2.4(");
-        Mockito.clearInvocations(impl);
-
-        impl.notify(event);
-        assertTrue(semA.tryAcquire(1, TimeUnit.SECONDS));
-        Mockito.verify(impl).sendResponse(Mockito.eq(ResponseCode.BAD_REQUEST), Mockito.contains("invalid range"), Mockito.any());
-    }
-
-    private static InstallRequestDTO createRequest(String sn, InstallAction action, List<String> indexes, Map<String, String> bundles) {
-        InstallRequestDTO request = new InstallRequestDTO();
-        request.symbolicName = sn;
-        request.action = action;
-        request.indexes = indexes;
-        request.bundles = bundles;
-        return request;
-    }
-
-    private static InstallRequestDTO createRequest(String sn, InstallAction action, List<String> indexes, String... nvs) {
-        if (nvs.length % 2 != 0) {
-            throw new IllegalArgumentException("odd number of name/version pairs");
-        }
-
-        Map<String, String> bundles = new HashMap<>();
-        for (int i = 0; i < nvs.length; i += 2) {
-            bundles.put(nvs[i], nvs[i + 1]);
-        }
-
-        return createRequest(sn, action, indexes, bundles);
+    public void testIndexesInvalid() throws Exception {
+    	Promise<InstallResponseDTO> promise = impl.installFunction("foo", "1.0.0",  singletonList("c:\\invalid"), singletonList(IDENTITY_REQUIREMENT));
+    	
+    	InstallResponseDTO value = promise.timeout(1000).getValue();
+    	assertEquals(ResponseCode.BAD_REQUEST, value.code);
+    	assertTrue(value.messages.toString(), value.messages.stream().anyMatch(s -> s.contains("indexes contains invalid")));
     }
 
 }
