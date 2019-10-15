@@ -90,25 +90,28 @@ import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
 )
 @Designate(ocd=BehaviourManagementImpl.Config.class)
 @SmartBehaviourDefinition(consumed = {ManagementBidRequestDTO.class},
-        author = BehaviourManagementImpl.BEHAVIOUR_AUTHOR, 
+        author = BehaviourManagementImpl.BEHAVIOUR_AUTHOR,
         name = BehaviourManagementImpl.BEHAVIOUR_NAME,
         description = "Implements the Behaviour Management Service")
 public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequestDTO>, BehaviourManagement {
-    
+
 	private static final String IDENTITY_FILTER = "osgi.identity;filter:=\"(&(osgi.identity=%s)(version=%s))\"";
-	private static final String SMART_BEHAVIOUR_FILTER = SMART_BEHAVIOUR_NAMESPACE + 
+	private static final String SMART_BEHAVIOUR_FILTER = SMART_BEHAVIOUR_NAMESPACE +
 			";filter:=\"(consumed=%s)\"";
-	
-	
+
+
 	static final String BEHAVIOUR_AUTHOR = "Paremus";
     static final String BEHAVIOUR_NAME = "[Brain-IoT] Behaviour Management Service";
-    
+
     static final String EVENT_SERVICE_PROPERTY_PREFIX = "eu.brain.iot.behaviour.";
-	
+
 	static final String EXPORTS = "com.paremus.brain.iot.management.api.BehaviourManagement";
     static final String PID = "eu.brain.iot.BehaviourManagementService";
 
-    @ObjectClassDefinition
+    @ObjectClassDefinition(
+        name = "Behaviour Management Service",
+        description = "Configuration for the Behaviour Management Service"
+    )
     public @interface Config {
     	@AttributeDefinition(description="The Marketplace indexes for installing Smart Behaviours")
         String[] indexes();
@@ -152,9 +155,9 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
     private Thread thread;
 
     private String myNode;
-    
+
     private List<ServiceRegistration<?>> registrations = new ArrayList<ServiceRegistration<?>>();
-	
+
 	private Processor processor;
 	private HttpClient client;
 
@@ -166,56 +169,56 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 		debug("activate");
         myNode = context.getProperty(Constants.FRAMEWORK_UUID);
         httpCacheDir = context.getDataFile("httpcache");
-        
-        
+
+
         processor = new Processor();
     	processor.set(Processor.CONNECTION_SETTINGS, config.connection_settings());
-        
+
     	client = new HttpClient();
     	client.setReporter(processor);
     	client.setRegistry(processor);
     	client.setCache(httpCacheDir);
 
     	client.readSettings(processor);
-		
+
 		processor.addBasicPlugin(client);
 
         // configure our consumers to only accept responses to our requests
         Hashtable<String, Object> baseProps = new Hashtable<>();
         baseProps.put(EVENT_SERVICE_PROPERTY_PREFIX + "author", BEHAVIOUR_AUTHOR);
         baseProps.put(EVENT_SERVICE_PROPERTY_PREFIX + "name", BEHAVIOUR_NAME);
-        
-        
+
+
         Hashtable<String, Object> props = new Hashtable<>(baseProps);
         props.put(EVENT_SERVICE_PROPERTY_PREFIX + "description", "Install request consumer");
         props.put(EVENT_SERVICE_PROPERTY_PREFIX + "consumed", ManagementInstallRequestDTO.class.getName());
         props.put(EVENT_SERVICE_PROPERTY_PREFIX + "filter", String.format("(targetNode=%s)", myNode));
-        
-        registrations.add(context.registerService(SmartBehaviour.class, 
+
+        registrations.add(context.registerService(SmartBehaviour.class,
         		new InstallRequestConsumer(this), props));
-        
+
         props = new Hashtable<>(baseProps);
         props.put(EVENT_SERVICE_PROPERTY_PREFIX + "description", "Install response consumer");
         props.put(EVENT_SERVICE_PROPERTY_PREFIX + "consumed", InstallResponseDTO.class.getName());
         props.put(EVENT_SERVICE_PROPERTY_PREFIX + "filter", String.format("(requestNode=%s)", myNode));
 
-        registrations.add(context.registerService(SmartBehaviour.class, 
+        registrations.add(context.registerService(SmartBehaviour.class,
         		new InstallResponseConsumer(this), props));
 
         props = new Hashtable<>(baseProps);
         props.put(EVENT_SERVICE_PROPERTY_PREFIX + "description", "Management response consumer");
         props.put(EVENT_SERVICE_PROPERTY_PREFIX + "consumed", ManagementResponseDTO.class.getName());
-        
-        registrations.add(context.registerService(SmartBehaviour.class, 
+
+        registrations.add(context.registerService(SmartBehaviour.class,
         		new ManagementResponseConsumer(this), props));
 
         props = new Hashtable<>(baseProps);
         props.put(EVENT_SERVICE_PROPERTY_PREFIX + "description", "Unhandled Event consumer");
         props.put(EVENT_SERVICE_PROPERTY_PREFIX + "consumer.of.last.resort", true);
-        
-        registrations.add(context.registerService(UntypedSmartBehaviour.class, 
+
+        registrations.add(context.registerService(UntypedSmartBehaviour.class,
         		new LastResortConsumer(this), props));
-        
+
         modified(config);
         start();
     }
@@ -240,11 +243,11 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         if (!indexes.equals(this.indexes)) {
             debug("modified: " + indexes);
             this.indexes = indexes;
-            
+
             OSGiRepository repo = loadIndex("Bundle Management Marketplaces", indexes);
-            
+
             shutdownOldRepo();
-    		
+
     		this.repository = repo;
         }
         else {
@@ -253,18 +256,18 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
     }
 
     private OSGiRepository loadIndex(String name, List<URI> indexes) throws Exception {
-    	
+
 		OSGiRepository repo = new OSGiRepository();
 		repo.setReporter(processor);
 		repo.setRegistry(processor);
-		
+
 		Map<String, String> props = new HashMap<>();
 		props.put("name", name);
 		props.put("locations", indexes.stream().map(URI::toString).collect(Collectors.joining(",")));
 		props.put("cache", httpCacheDir.getAbsolutePath());
 
 		repo.setProperties(props);
-		
+
 		return repo;
 	}
 
@@ -281,7 +284,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 	@Deactivate
     private synchronized void stop() {
         debug("deactivate");
-        
+
         for(ServiceRegistration<?> reg : registrations) {
         	try {
         		reg.unregister();
@@ -289,7 +292,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         		// Just keep going
         	}
         }
-        
+
         Thread thread = this.thread;
         this.thread = null;
 
@@ -303,13 +306,13 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         } catch (InterruptedException e) {
         }
         shutdownOldRepo();
-        
+
         client.close();
     }
 
     @Override
     public Collection<BehaviourDTO> findBehaviours(String ldapFilter) throws Exception {
-    	
+
     	Requirement req = repository.newRequirementBuilder(SMART_BEHAVIOUR_NAMESPACE)
     				.addDirective("filter", ldapFilter)
     				.build();
@@ -318,15 +321,15 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 			.map(this::newBehaviour)
 			.collect(toList());
     }
-    
+
     private BehaviourDTO newBehaviour(Capability cap) {
         BehaviourDTO dto = new BehaviourDTO();
         Resource resource = cap.getResource();
 		Capability idCap = resource.getCapabilities(IDENTITY_NAMESPACE).get(0);
-        
+
         dto.bundle = ResourceUtils.getIdentity(idCap);
         dto.version = ResourceUtils.getIdentityVersion(resource);
-        
+
         cap.getAttributes().forEach((k, v) -> {
             switch (k) {
                 case "name":
@@ -354,7 +357,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         request.requestIdentity = "install:" + behaviour.bundle + ":" + behaviour.version;
 
         request.requirement = format(IDENTITY_FILTER, behaviour.bundle, behaviour.version);
-        
+
         eventBus.deliver(request);
     }
 
@@ -424,10 +427,10 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         }
     }
 
-    
-    
+
+
     void notifyLastResort(String eventType, Map<String, ?> properties) {
-    	
+
     	String identity = "LastResort:" + eventType;
         List<UntypedEvent> pendingEvents = inProgress.get(identity);
 
@@ -504,16 +507,16 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
                     info("\n\nProcessing %s requestIdentity=%s %s", action, requestIdentity, request.requirement);
 
                     List<Requirement> resourceSelectionRequirement = toRequirementList(request.requirement);
-                    
+
                     Resource res = getResourceForRequirement(resourceSelectionRequirement, requestIdentity);
-                    
+
                     List<URI> indexes = getRelevantIndex(res);
-                    
+
                     String resolveRequirements = resolveRequirementsFor(res, request.requirement);
 
                     if (request instanceof ManagementBidRequestDTO) {
-                        Map<Resource, String> resolve = resolver.resolve(requestIdentity, 
-                        		singletonList(loadIndex("Resolving " + requestIdentity, indexes)), 
+                        Map<Resource, String> resolve = resolver.resolve(requestIdentity,
+                        		singletonList(loadIndex("Resolving " + requestIdentity, indexes)),
                         		toRequirementList(resolveRequirements));
                         debug("resolve size=" + resolve.size());
                         ManagementResponseDTO response = new ManagementResponseDTO();
@@ -552,7 +555,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
                 }
             }
         }
-        
+
         private List<Requirement> toRequirementList(String requirements) {
         	try {
 				return getRequirementsFrom(new Parameters(requirements));
@@ -561,15 +564,15 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 				throw new RuntimeException("Failed to generate requirement list", e);
 			}
         }
-        
+
         private Resource getResourceForRequirement(List<Requirement> requirements, String request) {
-        	
+
         	List<Resource> found = repository.findProviders(requirements).values().stream()
     				.flatMap(Collection::stream)
     				.map(Capability::getResource)
     				.distinct()
     				.collect(toList());
-        	
+
         	if(found.isEmpty()) {
         		// TODO alert no matching resource
         		throw new RuntimeException("No resource suitable for " + request);
@@ -577,14 +580,14 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         		// TODO alert too many matching resources
         		throw new RuntimeException("Too many resources suitable for " + request);
         	}
-        	
+
         	return found.get(0);
         }
 
 		private List<URI> getRelevantIndex(Resource resource) {
-			
+
 			List<Capability> capabilities = resource.getCapabilities(IDENTITY_NAMESPACE);
-			
+
 			//TODO We shouldn't have an empty id capability ever, but the tests do
 			// at the moment
 			if(capabilities.isEmpty() ||
@@ -596,7 +599,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 					.map(a -> String.valueOf(a.get(CAPABILITY_URL_ATTRIBUTE)))
 					.map(URI::create)
 					.collect(toList());
-				
+
 				return list.isEmpty() ? indexes : list;
 			} else {
 				// This is not a smart behaviour, just use the indexes we have
@@ -606,7 +609,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
 		private String resolveRequirementsFor(Resource res, String resourceSelectionRequirement) {
 			List<Capability> capabilities = res.getCapabilities(IDENTITY_NAMESPACE);
-			
+
 			//TODO We shouldn't have an empty id capability ever, but the tests do
 			// at the moment
 			if(capabilities.isEmpty() ||
@@ -615,9 +618,9 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 				String aggregate = res.getCapabilities(SMART_BEHAVIOUR_DEPLOYMENT_NAMESPACE).stream()
 					.map(c -> String.valueOf(c.getAttributes().get(CAPABILITY_REQUIREMENTS_ATTRIBUTE)))
 					.collect(Collectors.joining(","));
-				
+
 				return aggregate.isEmpty() ? resourceSelectionRequirement : aggregate;
-				
+
 			} else {
 				// This is not a smart behaviour, just use the indexes we have
 				return resourceSelectionRequirement;
