@@ -14,6 +14,9 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
+import java.lang.management.ThreadMXBean;
 import java.util.Collections;
 import java.util.Dictionary;
 import java.util.Hashtable;
@@ -69,6 +72,14 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
     public void tearDown() throws Exception {
     	installer.resetNode()
     		.timeout(10000)
+    		.recover(p -> {
+    			System.out.println("Failed to complete in time");
+    			ThreadMXBean threadMxBean = ManagementFactory.getThreadMXBean();
+    	        for (ThreadInfo ti : threadMxBean.dumpAllThreads(true, true)) {
+    	            System.out.print(ti.toString());
+    	        }
+    			throw new RuntimeException(p.getFailure());
+    		})
     		.thenAccept(response -> assertEquals(ResponseCode.SUCCESS, response.code))
     		.getValue();
     	
