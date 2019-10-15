@@ -92,18 +92,21 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
 
 	private File httpCacheDir;
 
-	@ObjectClassDefinition
+	@ObjectClassDefinition(
+        name = "Bundle Installer",
+        description = "Configuration for the Bundle Installer"
+    )
     public @interface Config {
 		@AttributeDefinition(description="Connection settings file for index and bundle download", defaultValue="")
     	public String connection_settings() default "";
     }
-	
-	
+
+
     @Activate
     void activate(Config config, BundleContext context) throws IOException, Exception {
         this.context = context;
         httpCacheDir = context.getDataFile("httpcache");
-        
+
         processor = new Processor();
         processor.set(Processor.CONNECTION_SETTINGS, config.connection_settings());
 
@@ -111,9 +114,9 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
 		client.setReporter(processor);
 		client.setRegistry(processor);
 		client.setCache(httpCacheDir);
-		
+
 		client.readSettings(processor);
-		
+
 		processor.addBasicPlugin(client);
         start();
     }
@@ -136,7 +139,7 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
             thread.join(2000);
         } catch (InterruptedException e) {
         }
-        
+
         client.close();
     }
 
@@ -227,8 +230,8 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
         final String sponsor = request.symbolicName + '-' + request.version;
         final String oldSponsor = sponsors.put(request.symbolicName, sponsor);
 
-        if (sponsor.equals(oldSponsor)) {
-            return Collections.singletonList(sponsor + "is already installed");
+        if (resolve.size() == 0) {
+            return Collections.singletonList(sponsor + " is already installed");
         }
 
         List<String> oldLocs = installer.getLocations(oldSponsor);
@@ -334,11 +337,11 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
     }
 
     private List<OSGiRepository> getRepositories(InstallRequestDTO request) throws Exception  {
-    	
+
     	if (request.indexes == null || request.indexes.isEmpty()) {
             throw new BadRequestException("no indexes in request");
         }
-    	
+
     	List<URI> indexes = new ArrayList<>();
     	try {
             for (String index : request.indexes) {
@@ -347,24 +350,24 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
         } catch (URISyntaxException e) {
             throw new BadRequestException("indexes contains invalid URI: " + e);
         }
-		
+
 		List<OSGiRepository> repositories = new ArrayList<>(indexes.size());
 		for(URI index : indexes) {
-			
+
 			OSGiRepository repo = new OSGiRepository();
 			repo.setReporter(processor);
 			repo.setRegistry(processor);
-			
+
 			Map<String, String> props = new HashMap<>();
 			props.put("name", "Repository for " + index);
 			props.put("locations", index.toString());
 			props.put("cache", httpCacheDir.getAbsolutePath());
-			
+
 			repo.setProperties(props);
-			
+
 			repositories.add(repo);
 		}
-		
+
 		return repositories;
     }
 
@@ -404,7 +407,7 @@ public class BundleInstallerImpl implements SmartBehaviour<InstallRequestDTO> {
             // FIXME: SCR is logging DEBUG on our loggers!
             log.info(format, args);
         } else {
-            System.err.printf("default:DEBUG:" + format + "\n", args);
+            System.err.printf("BI:DEBUG:" + format + "\n", args);
         }
     }
 
