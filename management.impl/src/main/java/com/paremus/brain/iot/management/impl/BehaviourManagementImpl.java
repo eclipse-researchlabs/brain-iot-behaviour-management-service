@@ -96,6 +96,7 @@ import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
 @ExportedService(service_exported_interfaces=BehaviourManagement.class)
 @Designate(ocd=BehaviourManagementImpl.Config.class)
 @SmartBehaviourDefinition(consumed = {ManagementBidRequestDTO.class},
+        filter = "(requestIdentity=*)",
         author = BehaviourManagementImpl.BEHAVIOUR_AUTHOR,
         name = BehaviourManagementImpl.BEHAVIOUR_NAME,
         description = "Implements the Behaviour Management Service")
@@ -139,7 +140,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
     @Reference
     private InstallResolver resolver;
-    
+
     @Reference
     private FunctionInstaller installer;
 
@@ -255,13 +256,13 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         else {
             debug("modified: indexes is unchanged!");
         }
-        
+
         for(String identity : config.preinstalled_behaviours()) {
-        	
+
         	Map<String, String> installed = installer.listInstalledFunctions();
-        	
+
         	String[] id = identity.split(":", 2);
-        	
+
         	if(installed.get(id[0]) == null) {
         		installBehaviour(id[0], id[1], identity);
         	}
@@ -271,22 +272,22 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
     private Promise<InstallResponseDTO> installBehaviour(String symbolicName, String version, String requestIdentity) {
 		Promise<InstallResponseDTO> p;
 		String identityRequirement = String.format(IDENTITY_FILTER, symbolicName, version);
-		
+
 		Resource res = getResourceForRequirement(toRequirementList(identityRequirement), requestIdentity);
-	
+
 		List<URI> indexes = getRelevantIndex(res);
-	
+
 		String resolveRequirements = resolveRequirementsFor(res, identityRequirement);
-		
-		p = installer.installFunction(symbolicName, version, 
+
+		p = installer.installFunction(symbolicName, version,
 				indexes.stream().map(URI::toString).collect(toList()), singletonList(resolveRequirements));
 		return p;
 	}
 
 	private List<URI> getRelevantIndex(Resource resource) {
-	
+
 		List<Capability> capabilities = resource.getCapabilities(IDENTITY_NAMESPACE);
-	
+
 		//TODO We shouldn't have an empty id capability ever, but the tests do
 		// at the moment
 		if(capabilities.isEmpty() ||
@@ -298,7 +299,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 				.map(a -> String.valueOf(a.get(CAPABILITY_URL_ATTRIBUTE)))
 				.map(URI::create)
 				.collect(toList());
-	
+
 			return list.isEmpty() ? indexes : list;
 		} else {
 			// This is not a smart behaviour, just use the indexes we have
@@ -308,7 +309,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
 	private String resolveRequirementsFor(Resource res, String resourceSelectionRequirement) {
 		List<Capability> capabilities = res.getCapabilities(IDENTITY_NAMESPACE);
-	
+
 		//TODO We shouldn't have an empty id capability ever, but the tests do
 		// at the moment
 		if(capabilities.isEmpty() ||
@@ -317,9 +318,9 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 			String aggregate = res.getCapabilities(SMART_BEHAVIOUR_DEPLOYMENT_NAMESPACE).stream()
 				.map(c -> String.valueOf(c.getAttributes().get(CAPABILITY_REQUIREMENTS_ATTRIBUTE)))
 				.collect(Collectors.joining(","));
-	
+
 			return aggregate.isEmpty() ? resourceSelectionRequirement : aggregate;
-	
+
 		} else {
 			// This is not a smart behaviour, just use the indexes we have
 			return resourceSelectionRequirement;
@@ -436,23 +437,23 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
     @Override
     public void uninstallBehaviour(BehaviourDTO behaviour, String targetNode) {
     	ManagementInstallRequestDTO request = new ManagementInstallRequestDTO();
-    	
+
     	request.targetNode = targetNode;
     	request.requestIdentity = "uninstall:" + behaviour.bundle + ":" + behaviour.version;
     	request.action = ManagementInstallAction.UNINSTALL;
     	request.symbolicName = behaviour.bundle;
         request.version = behaviour.version;
-    	
+
     	eventBus.deliver(request);
     }
 
     @Override
     public void resetNode(String targetNode) {
     	ManagementInstallRequestDTO request = new ManagementInstallRequestDTO();
-    	
+
     	request.targetNode = targetNode;
     	request.action = ManagementInstallAction.RESET;
-    	
+
     	eventBus.deliver(request);
     }
 
@@ -464,7 +465,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
     public void clearBlacklist() {
     	blacklist.clear();
     }
-    
+
     void notify(ManagementInstallRequestDTO request) {
         queue.add(request);
     }
@@ -556,9 +557,9 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
             ManagementBidRequestDTO request = new ManagementBidRequestDTO();
 			request.requestIdentity = identity;
-			
+
 			Resource resource = getResourceForRequirement(toRequirementList(format(SMART_BEHAVIOUR_FILTER, eventType)), identity);
-			
+
             request.symbolicName = getSymbolicName(resource, identity);
             request.version = getVersion(resource);
             eventBus.deliver(request);
@@ -575,13 +576,13 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 	}
 
 	private Resource getResourceForRequirement(List<Requirement> requirements, String request) {
-	
+
 		List<Resource> found = repository.findProviders(requirements).values().stream()
 				.flatMap(Collection::stream)
 				.map(Capability::getResource)
 				.distinct()
 				.collect(toList());
-	
+
 		if(found.isEmpty()) {
 			// TODO alert no matching resource
 			throw new RuntimeException("No resource suitable for " + request);
@@ -589,7 +590,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 			// TODO alert too many matching resources
 			throw new RuntimeException("Too many resources suitable for " + request);
 		}
-	
+
 		return found.get(0);
 	}
 
@@ -651,7 +652,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
                     // reject any more events of this type
                     blacklist.put(requestIdentity, System.currentTimeMillis());
-                    
+
                     if(request instanceof ManagementInstallRequestDTO) {
                     	ManagementInstallRequestDTO installDTO = (ManagementInstallRequestDTO) request;
                     	pendingInstall.put(requestIdentity, request.sourceNode);
@@ -673,21 +674,21 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 							default:
 								p = Promises.failed(new UnsupportedOperationException("No support for an action " + installDTO.action + " yet"));
 								break;
-                    	
+
                     	}
-                    	final ManagementDTO req = request; 
+                    	final ManagementDTO req = request;
                     	p.thenAccept(v -> installComplete(requestIdentity, v))
                     		.onFailure(t -> failedAction(req, t));
                     } else if (request instanceof ManagementBidRequestDTO) {
-                    
+
                     	String identityRequirement = String.format(IDENTITY_FILTER, request.symbolicName, request.version);
-						
+
 						Resource res = getResourceForRequirement(toRequirementList(identityRequirement), requestIdentity);
 
 	                    List<URI> indexes = getRelevantIndex(res);
-	                    
+
                     	String resolveRequirements = resolveRequirementsFor(res, identityRequirement);
-                    	
+
                     	Map<Resource, String> resolve = resolver.resolve(requestIdentity,
                         		singletonList(loadIndex("Resolving " + requestIdentity, indexes)),
                         		toRequirementList(resolveRequirements));
@@ -712,7 +713,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
 		private void failedAction(ManagementDTO request, Throwable t) {
         	pendingInstall.remove(request.requestIdentity, request.sourceNode);
-        	log.warn("Failed to process action(%s) event(%s): %s", request.getClass().getSimpleName(), 
+        	log.warn("Failed to process action(%s) event(%s): %s", request.getClass().getSimpleName(),
         			request.requestIdentity, t.getMessage(), t);
         	ManagementResponseDTO response = new ManagementResponseDTO();
             response.code = ManagementResponseDTO.ResponseCode.FAIL;
