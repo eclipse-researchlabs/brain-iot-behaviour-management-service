@@ -58,7 +58,8 @@ import eu.brain.iot.installer.api.InstallResolver;
 import eu.brain.iot.installer.api.InstallResponseDTO;
 import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
 
-@Component(configurationPid="eu.brain.iot.BundleInstallerService")
+//Be immediate so we don't stop processing queued events if the service is released
+@Component(configurationPid="eu.brain.iot.BundleInstallerService", immediate=true)
 @Designate(ocd=BundleInstallerImpl.Config.class)
 public class BundleInstallerImpl implements FunctionInstaller {
 

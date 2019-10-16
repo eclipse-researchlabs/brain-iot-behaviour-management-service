@@ -32,7 +32,8 @@ import org.osgi.service.log.LoggerFactory;
 
 import aQute.bnd.http.HttpClient;
 
-@Component
+// Be immediate so we don't lose state if the service is released
+@Component(immediate=true)
 public class FrameworkInstallerImpl implements FrameworkInstaller {
     @Reference(service = LoggerFactory.class, cardinality = ReferenceCardinality.OPTIONAL)
     private FormatterLogger log;

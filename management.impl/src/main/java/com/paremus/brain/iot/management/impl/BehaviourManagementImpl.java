@@ -88,8 +88,10 @@ import eu.brain.iot.installer.api.InstallResolver;
 import eu.brain.iot.installer.api.InstallResponseDTO;
 import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
 
+//Be immediate so we don't lose state if the service is released
 @Component(configurationPid = BehaviourManagementImpl.PID,
-        configurationPolicy = ConfigurationPolicy.REQUIRE
+        configurationPolicy = ConfigurationPolicy.REQUIRE,
+        immediate=true
 )
 @ExportedService(service_exported_interfaces=BehaviourManagement.class)
 @Designate(ocd=BehaviourManagementImpl.Config.class)
