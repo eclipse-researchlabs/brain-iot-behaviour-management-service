@@ -122,6 +122,8 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         String[] indexes();
         @AttributeDefinition(description="Connection settings file for index and bundle download", defaultValue="")
     	public String connection_settings() default "";
+        @AttributeDefinition(description="The identities of behaviours that should be installed, <symbolic name>:<version>")
+        public String[] preinstalled_behaviours() default {};
     }
 
     class UntypedEvent {
@@ -253,9 +255,78 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         else {
             debug("modified: indexes is unchanged!");
         }
+        
+        for(String identity : config.preinstalled_behaviours()) {
+        	
+        	Map<String, String> installed = installer.listInstalledFunctions();
+        	
+        	String[] id = identity.split(":", 2);
+        	
+        	if(installed.get(id[0]) == null) {
+        		installBehaviour(id[0], id[1], identity);
+        	}
+        }
     }
 
-    private OSGiRepository loadIndex(String name, List<URI> indexes) throws Exception {
+    private Promise<InstallResponseDTO> installBehaviour(String symbolicName, String version, String requestIdentity) {
+		Promise<InstallResponseDTO> p;
+		String identityRequirement = String.format(IDENTITY_FILTER, symbolicName, version);
+		
+		Resource res = getResourceForRequirement(toRequirementList(identityRequirement), requestIdentity);
+	
+		List<URI> indexes = getRelevantIndex(res);
+	
+		String resolveRequirements = resolveRequirementsFor(res, identityRequirement);
+		
+		p = installer.installFunction(symbolicName, version, 
+				indexes.stream().map(URI::toString).collect(toList()), singletonList(resolveRequirements));
+		return p;
+	}
+
+	private List<URI> getRelevantIndex(Resource resource) {
+	
+		List<Capability> capabilities = resource.getCapabilities(IDENTITY_NAMESPACE);
+	
+		//TODO We shouldn't have an empty id capability ever, but the tests do
+		// at the moment
+		if(capabilities.isEmpty() ||
+				IDENTITY_TYPE_SMART_BEHAVIOUR.equals(capabilities.get(0).getAttributes().get(CAPABILITY_TYPE_ATTRIBUTE))) {
+			// This is a Smart Behaviour
+			List<URI> list = resource.getCapabilities(CONTENT_NAMESPACE).stream()
+				.map(Capability::getAttributes)
+				.filter(a -> CONTENT_MIME_TYPE_INDEX.equals(a.get(CAPABILITY_MIME_ATTRIBUTE)))
+				.map(a -> String.valueOf(a.get(CAPABILITY_URL_ATTRIBUTE)))
+				.map(URI::create)
+				.collect(toList());
+	
+			return list.isEmpty() ? indexes : list;
+		} else {
+			// This is not a smart behaviour, just use the indexes we have
+			return indexes;
+		}
+	}
+
+	private String resolveRequirementsFor(Resource res, String resourceSelectionRequirement) {
+		List<Capability> capabilities = res.getCapabilities(IDENTITY_NAMESPACE);
+	
+		//TODO We shouldn't have an empty id capability ever, but the tests do
+		// at the moment
+		if(capabilities.isEmpty() ||
+				IDENTITY_TYPE_SMART_BEHAVIOUR.equals(capabilities.get(0).getAttributes().get(CAPABILITY_TYPE_ATTRIBUTE))) {
+			// This is a Smart Behaviour
+			String aggregate = res.getCapabilities(SMART_BEHAVIOUR_DEPLOYMENT_NAMESPACE).stream()
+				.map(c -> String.valueOf(c.getAttributes().get(CAPABILITY_REQUIREMENTS_ATTRIBUTE)))
+				.collect(Collectors.joining(","));
+	
+			return aggregate.isEmpty() ? resourceSelectionRequirement : aggregate;
+	
+		} else {
+			// This is not a smart behaviour, just use the indexes we have
+			return resourceSelectionRequirement;
+		}
+	}
+
+	private OSGiRepository loadIndex(String name, List<URI> indexes) throws Exception {
 
 		OSGiRepository repo = new OSGiRepository();
 		repo.setReporter(processor);
@@ -390,6 +461,10 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         queue.add(request);
     }
 
+    public void clearBlacklist() {
+    	blacklist.clear();
+    }
+    
     void notify(ManagementInstallRequestDTO request) {
         queue.add(request);
     }
@@ -583,16 +658,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
                     	Promise<InstallResponseDTO> p;
                     	switch(installDTO.action) {
 							case INSTALL:
-								String identityRequirement = String.format(IDENTITY_FILTER, request.symbolicName, request.version);
-								
-								Resource res = getResourceForRequirement(toRequirementList(identityRequirement), requestIdentity);
-
-			                    List<URI> indexes = getRelevantIndex(res);
-
-			                    String resolveRequirements = resolveRequirementsFor(res, identityRequirement);
-			                    
-			                    p = installer.installFunction(request.symbolicName, request.version, 
-			                    		indexes.stream().map(URI::toString).collect(toList()), singletonList(resolveRequirements));
+								p = installBehaviour(request.symbolicName, request.version, requestIdentity);
 								break;
 							case RESET:
 								p = installer.resetNode();
@@ -643,8 +709,8 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
                 }
             }
         }
-        
-        private void failedAction(ManagementDTO request, Throwable t) {
+
+		private void failedAction(ManagementDTO request, Throwable t) {
         	pendingInstall.remove(request.requestIdentity, request.sourceNode);
         	log.warn("Failed to process action(%s) event(%s): %s", request.getClass().getSimpleName(), 
         			request.requestIdentity, t.getMessage(), t);
@@ -654,49 +720,6 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
             response.targetNode = request.sourceNode;
             eventBus.deliver(response);
         }
-
-        private List<URI> getRelevantIndex(Resource resource) {
-
-			List<Capability> capabilities = resource.getCapabilities(IDENTITY_NAMESPACE);
-
-			//TODO We shouldn't have an empty id capability ever, but the tests do
-			// at the moment
-			if(capabilities.isEmpty() ||
-					IDENTITY_TYPE_SMART_BEHAVIOUR.equals(capabilities.get(0).getAttributes().get(CAPABILITY_TYPE_ATTRIBUTE))) {
-				// This is a Smart Behaviour
-				List<URI> list = resource.getCapabilities(CONTENT_NAMESPACE).stream()
-					.map(Capability::getAttributes)
-					.filter(a -> CONTENT_MIME_TYPE_INDEX.equals(a.get(CAPABILITY_MIME_ATTRIBUTE)))
-					.map(a -> String.valueOf(a.get(CAPABILITY_URL_ATTRIBUTE)))
-					.map(URI::create)
-					.collect(toList());
-
-				return list.isEmpty() ? indexes : list;
-			} else {
-				// This is not a smart behaviour, just use the indexes we have
-				return indexes;
-			}
-		}
-
-		private String resolveRequirementsFor(Resource res, String resourceSelectionRequirement) {
-			List<Capability> capabilities = res.getCapabilities(IDENTITY_NAMESPACE);
-
-			//TODO We shouldn't have an empty id capability ever, but the tests do
-			// at the moment
-			if(capabilities.isEmpty() ||
-					IDENTITY_TYPE_SMART_BEHAVIOUR.equals(capabilities.get(0).getAttributes().get(CAPABILITY_TYPE_ATTRIBUTE))) {
-				// This is a Smart Behaviour
-				String aggregate = res.getCapabilities(SMART_BEHAVIOUR_DEPLOYMENT_NAMESPACE).stream()
-					.map(c -> String.valueOf(c.getAttributes().get(CAPABILITY_REQUIREMENTS_ATTRIBUTE)))
-					.collect(Collectors.joining(","));
-
-				return aggregate.isEmpty() ? resourceSelectionRequirement : aggregate;
-
-			} else {
-				// This is not a smart behaviour, just use the indexes we have
-				return resourceSelectionRequirement;
-			}
-		}
     }
 
 

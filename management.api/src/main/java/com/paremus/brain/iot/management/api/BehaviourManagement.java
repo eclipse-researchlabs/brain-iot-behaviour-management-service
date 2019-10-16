@@ -38,4 +38,9 @@ public interface BehaviourManagement {
      * @param targetNode
      */
     void resetNode(String targetNode);
+    
+    /**
+     * Clear the blacklist on this Bundle Management Service
+     */
+    void clearBlacklist();
 }
