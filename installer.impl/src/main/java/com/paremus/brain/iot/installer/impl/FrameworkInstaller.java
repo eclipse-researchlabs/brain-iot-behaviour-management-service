@@ -12,6 +12,7 @@ import aQute.bnd.http.HttpClient;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 
 /**
  * A management agent responsible for installing and uninstalling bundles into
@@ -62,5 +63,11 @@ public interface FrameworkInstaller {
      * @return
      */
     List<String> getLocations(Object sponsor);
+
+    /**
+     * Get the sponsors known to this installer
+     * @return
+     */
+	Set<Object> getSponsors();
 
 }

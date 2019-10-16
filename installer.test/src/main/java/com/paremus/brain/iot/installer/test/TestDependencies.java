@@ -5,6 +5,8 @@
 package com.paremus.brain.iot.installer.test;
 
 import eu.brain.iot.eventing.api.EventBus;
+import eu.brain.iot.installer.api.FunctionInstaller;
+
 import org.osgi.framework.BundleContext;
 import org.osgi.service.cm.ConfigurationAdmin;
 import org.osgi.service.component.annotations.Activate;
@@ -15,13 +17,10 @@ import org.osgi.service.log.LogEntry;
 import org.osgi.service.log.LogLevel;
 import org.osgi.service.log.LogListener;
 import org.osgi.service.log.LogReaderService;
-import org.osgi.service.log.Logger;
 import org.osgi.service.log.admin.LoggerAdmin;
 import org.osgi.service.log.admin.LoggerContext;
 
 import java.util.Collections;
-
-import static org.osgi.service.log.Logger.ROOT_LOGGER_NAME;
 
 /**
  * Helper to allow DS to provide test dependencies
@@ -37,6 +36,9 @@ public class TestDependencies implements LogListener {
 
     @Reference
     EventBus eventBus;
+    
+    @Reference
+    FunctionInstaller installer;
 
     @Reference
     TestResponser responder;

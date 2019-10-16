@@ -5,5 +5,5 @@
 
 package com.paremus.brain.iot.management.api;
 
-public class ManagementBidRequestDTO extends ManagementRequestDTO {
+public class ManagementBidRequestDTO extends ManagementDTO {
 }
