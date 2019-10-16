@@ -70,21 +70,34 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
     
     @After
     public void tearDown() throws Exception {
-    	installer.resetNode()
+    	Promise<?> p = installer.resetNode()
     		.timeout(10000)
-    		.recover(p -> {
+    		.recover(p2 -> {
     			System.out.println("Failed to complete in time");
-    			ThreadMXBean threadMxBean = ManagementFactory.getThreadMXBean();
-    	        for (ThreadInfo ti : threadMxBean.dumpAllThreads(true, true)) {
-    	            System.out.print(ti.toString());
-    	        }
-    			throw new RuntimeException(p.getFailure());
+    			dumpThreads();
+    			throw new RuntimeException(p2.getFailure());
     		})
-    		.thenAccept(response -> assertEquals(ResponseCode.SUCCESS, response.code))
-    		.getValue();
+    		.thenAccept(response -> assertEquals(ResponseCode.SUCCESS, response.code));
+    	
+    	if(!p.isDone()) {
+    		Thread.sleep(2000);
+    		if(!p.isDone()) {
+    			System.out.println("The test cleanup seems to be stuck");
+    			dumpThreads();
+    		}
+    	}
+    	
+    	p.getValue();
     	
     	queue.clear();
     }
+
+	private void dumpThreads() {
+		ThreadMXBean threadMxBean = ManagementFactory.getThreadMXBean();
+		for (ThreadInfo ti : threadMxBean.dumpAllThreads(true, true)) {
+		    System.out.print(ti.toString());
+		}
+	}
 
 	private void configureBMSAndInstaller(String indexLocation) throws IOException, InterruptedException {
 		// configure last_resort handler

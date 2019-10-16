@@ -219,6 +219,7 @@ public class BundleInstallerImpl implements FunctionInstaller {
 			dto.action = InstallAction.RESET;
 			dto.response = response;
 			
+			log.info("Adding reset request to queue");
 			queue.add(dto);
 		} catch (Exception e) {
 			response.fail(e);
