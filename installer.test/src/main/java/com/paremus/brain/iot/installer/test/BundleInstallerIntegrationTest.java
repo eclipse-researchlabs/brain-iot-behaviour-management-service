@@ -18,6 +18,7 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Dictionary;
 import java.util.Hashtable;
@@ -29,13 +30,13 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceReference;
 import org.osgi.service.cm.Configuration;
 import org.osgi.util.promise.Promise;
 
+import com.paremus.brain.iot.management.api.BehaviourManagement;
 import com.paremus.brain.iot.management.api.ManagementResponseDTO;
 
 import aQute.bnd.osgi.resource.CapReqBuilder;
@@ -114,6 +115,17 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
     	p.getValue();
     	
     	queue.clear();
+    	
+    	assertEquals(Collections.emptyMap(), installer.listInstalledFunctions());
+    	
+    	ServiceReference<BehaviourManagement> ref = context.getServiceReference(BehaviourManagement.class);
+    	if(ref != null) {
+    		try {
+    			context.getService(ref).clearBlacklist();
+    		} finally {
+    			context.ungetService(ref);
+    		}
+    	}
     }
 
 	private void dumpThreads() {
@@ -123,12 +135,16 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
 		}
 	}
 
-	private void configureBMSAndInstaller(String indexLocation) throws IOException, InterruptedException {
+	private void configureBMSAndInstaller(String indexLocation, String... preinstalled) throws IOException, InterruptedException {
 		// configure last_resort handler
 		boolean inCI = System.getenv("CI") != null;
 
 		Dictionary<String, Object> props = new Hashtable<>();
         props.put("indexes", indexLocation);
+        
+        if(preinstalled.length > 0) {
+        	props.put("preinstalled.behaviours", Arrays.asList(preinstalled));
+        }
         
 		if(inCI) {
         	props.put("connection.settings", System.getenv("CI_PROJECT_DIR") + "/.m2/settings.xml");
@@ -259,37 +275,6 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
 
     }
 
-    // This test used to work, but it's the older version of doing things and for some reason
-    // I can't work out how to reset the tests fully.
-    @Test
-    @Ignore
-    public void testLastResort() throws Exception {
-    	
-    	// index2.xml is an old-style 2-tier index
-    	configureBMSAndInstaller(new File(resourceDir, "index2.xml").toURI().toString());
-    	
-        eventBus.deliver("com.paremus.brain.iot.example.sensor.api.SensorReadingDTO", Collections.emptyMap());
-
-        ManagementResponseDTO response;
-        List<String> bundles;
-
-        response = queue.poll(10, TimeUnit.SECONDS);
-        bundles = TestUtils.listBundles(context);
-
-        assertTrue(response != null);
-        assertEquals(ResponseCode.SUCCESS, response.code);
-        assertTrue(bundles.stream().anyMatch(s -> s.contains("example.behaviour.impl")));
-
-        response = queue.poll(20, TimeUnit.SECONDS);
-        bundles = TestUtils.listBundles(context);
-
-        assertTrue(response != null);
-        assertEquals(ResponseCode.SUCCESS, response.code);
-        assertTrue(bundles.stream().anyMatch(s -> s.contains("example.light.impl")));
-
-        pause("test last resort");
-    }
-
     @Test
     public void testMarketplaceIndex() throws Exception {
     	
@@ -315,6 +300,46 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
     	assertTrue(bundles.stream().anyMatch(s -> s.contains("example.behaviour.impl")));
     	
     	response = queue.poll(10, TimeUnit.SECONDS);
+    	assertEquals(BID, response.code);
+    	assertEquals("com.paremus.brain.iot.example.light.impl", response.symbolicName);
+    	assertEquals("0.0.1.SNAPSHOT", response.version);
+    	
+    	response = queue.poll(30, TimeUnit.SECONDS);
+    	bundles = TestUtils.listBundles(context);
+    	
+    	assertTrue(response != null);
+    	assertEquals(ManagementResponseDTO.ResponseCode.INSTALL_OK, response.code);
+    	assertTrue(bundles.stream().anyMatch(s -> s.contains("example.light.impl")));
+    	
+    	pause("test last resort");
+    }
+
+    @Test
+    public void testPreInstallation() throws Exception {
+    	
+    	// This is the "official" example marketplace
+    	configureBMSAndInstaller("https://nexus.repository-pert.ismb.it/repository/marketplaces/com.paremus.brain.iot.marketplace/security-light-marketplace/0.0.1-SNAPSHOT/index.xml",
+    			"com.paremus.brain.iot.example.behaviour.impl:0.0.1.SNAPSHOT");
+
+    	boolean installed = false;
+    	for(int i = 0; i < 30; i++) {
+    		if(installer.listInstalledFunctions().isEmpty()) {
+    			Thread.sleep(1000);
+    		} else {
+    			installed = true;
+    			break;
+    		}
+    	}
+    	
+    	assertTrue("Preinstalled behaviour was missing", installed);
+    	
+    	eventBus.deliver("com.paremus.brain.iot.example.sensor.api.SensorReadingDTO", Collections.emptyMap());
+    	
+    	ManagementResponseDTO response;
+    	List<String> bundles;
+    	
+    	response = queue.poll(10, TimeUnit.SECONDS);
+    	assertNotNull(response);
     	assertEquals(BID, response.code);
     	assertEquals("com.paremus.brain.iot.example.light.impl", response.symbolicName);
     	assertEquals("0.0.1.SNAPSHOT", response.version);
