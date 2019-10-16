@@ -7,6 +7,7 @@ package com.paremus.brain.iot.installer.impl;
 
 import static org.osgi.framework.Bundle.INSTALLED;
 import static org.osgi.framework.Bundle.RESOLVED;
+import static org.osgi.framework.Constants.FRAMEWORK_UUID;
 
 import java.io.File;
 import java.io.IOException;
@@ -15,8 +16,6 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -79,8 +78,6 @@ public class BundleInstallerImpl implements FunctionInstaller {
 
     private final BlockingQueue<InstallRequestDTO> queue = new LinkedBlockingQueue<>();
 
-    private final Set<String> sponsors = new HashSet<>();
-    
     private final PromiseFactory promiseFactory = new PromiseFactory(null);
 
     private BundleContext context;
@@ -214,6 +211,7 @@ public class BundleInstallerImpl implements FunctionInstaller {
 
 	@Override
 	public Promise<InstallResponseDTO> resetNode() {
+		log.info("Resetting the node %s", context.getProperty(FRAMEWORK_UUID));
 		Deferred<InstallResponseDTO> response = promiseFactory.deferred();
 		
 		try {
@@ -254,15 +252,16 @@ public class BundleInstallerImpl implements FunctionInstaller {
             if (sponsor == null || sponsor.isEmpty()) {
                 throw new BadRequestException("deployment symbolic name not set");
             }
+            
+            log.info("Uninstalling %s", sponsor);
 
             uninstalled.addAll(installer.removeSponsor(sponsor));
         } else {
-            Iterator<Object> iterator = installer.getSponsors().iterator();
+            Set<Object> sponsors = installer.getSponsors();
+            log.info("Resetting node %s by removing %s", context.getProperty(FRAMEWORK_UUID), sponsors);
 
-            while (iterator.hasNext()) {
-                Object sponsor = iterator.next();
-                List<Bundle> removed = installer.removeSponsor(sponsor);
-                uninstalled.addAll(removed);
+            for(Object sponsor : sponsors) {
+                uninstalled.addAll(installer.removeSponsor(sponsor));
             }
         }
 
@@ -299,9 +298,7 @@ public class BundleInstallerImpl implements FunctionInstaller {
 
         debug("Resolution size: %d", resolve.size());
 
-        sponsors.add(sponsor);
         final String oldSponsor = request.oldSponsor;
-        sponsors.remove(oldSponsor);
 
         if (resolve.size() == 0) {
             return Collections.singletonList(sponsor + " is already installed");
@@ -311,12 +308,6 @@ public class BundleInstallerImpl implements FunctionInstaller {
 
         // if any error occurs, replay rollbacks to restore framework state
         List<Callable<Void>> rollbacks = new LinkedList<>();
-
-        rollbacks.add(0, () -> {
-            debug("ROLLBACK sponsor");
-            sponsors.add(oldSponsor);
-            return null;
-        });
 
         try {
             if (update) {
