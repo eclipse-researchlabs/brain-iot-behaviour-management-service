@@ -20,9 +20,9 @@
             <type>pom</type>
         </dependency>
         <dependency>
-            <groupId>com.paremus.brain.iot</groupId>
-            <artifactId>eventing.api</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
+            <groupId>biz.aQute.bnd</groupId>
+            <artifactId>biz.aQute.bndlib</artifactId>
+            <version>4.3.0</version>
         </dependency>
     </dependencies>
 
