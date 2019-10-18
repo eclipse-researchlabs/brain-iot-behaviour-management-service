@@ -8,16 +8,18 @@ package com.paremus.brain.iot.installer.impl;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.osgi.resource.Requirement;
+import org.osgi.service.repository.Repository;
 import org.osgi.util.promise.Deferred;
 
-import eu.brain.iot.eventing.api.BrainIoTEvent;
+import aQute.bnd.http.HttpClient;
 import eu.brain.iot.installer.api.InstallResponseDTO;
 
 /**
  * The event that can be used to install or update bundles.
  */
 
-public class InstallRequestDTO extends BrainIoTEvent {
+public class InstallRequest {
 
     /**
      * The sponsor for the install
@@ -75,5 +77,10 @@ public class InstallRequestDTO extends BrainIoTEvent {
      * The old sponsor if this is an Update
      */
 	public String oldSponsor;
+	
+	/**
+	 * The Http Client to use to download and install bundles
+	 */
+	public HttpClient client;
 
 }

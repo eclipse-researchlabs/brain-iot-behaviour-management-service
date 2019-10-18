@@ -280,7 +280,8 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 		String resolveRequirements = resolveRequirementsFor(res, identityRequirement);
 
 		p = installer.installFunction(symbolicName, version,
-				indexes.stream().map(URI::toString).collect(toList()), singletonList(resolveRequirements));
+				indexes.stream().map(URI::toString).collect(toList()), 
+				singletonList(resolveRequirements), client);
 		return p;
 	}
 

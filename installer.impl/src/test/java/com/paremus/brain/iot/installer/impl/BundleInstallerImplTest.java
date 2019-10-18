@@ -25,6 +25,7 @@ import org.osgi.util.promise.Promise;
 
 import com.paremus.brain.iot.installer.impl.BundleInstallerImpl.Config;
 
+import aQute.bnd.http.HttpClient;
 import eu.brain.iot.installer.api.InstallResponseDTO;
 import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
 
@@ -41,6 +42,9 @@ public class BundleInstallerImplTest {
 
     @Mock
     Config config;
+    
+    @Mock
+    HttpClient client;
 
     BundleInstallerImpl impl;
 
@@ -49,7 +53,7 @@ public class BundleInstallerImplTest {
         impl = new BundleInstallerImpl();
         impl = Mockito.spy(impl);
 
-        Mockito.when(config.connection_settings()).thenReturn("");
+        Mockito.when(config.cache_location()).thenReturn("");
         
         impl.activate(config, context);
     }
@@ -61,7 +65,7 @@ public class BundleInstallerImplTest {
 
     @Test
     public void testIndexesMissing() throws Exception {
-        Promise<InstallResponseDTO> promise = impl.installFunction("foo", "1.0.0", null, singletonList(IDENTITY_REQUIREMENT));
+        Promise<InstallResponseDTO> promise = impl.installFunction("foo", "1.0.0", null, singletonList(IDENTITY_REQUIREMENT), client);
         
         InstallResponseDTO value = promise.timeout(1000).getValue();
         assertEquals(ResponseCode.BAD_REQUEST, value.code);
@@ -70,7 +74,7 @@ public class BundleInstallerImplTest {
 
     @Test
     public void testRequirementsMissing() throws Exception {
-    	Promise<InstallResponseDTO> promise = impl.installFunction("foo", "1.0.0", Arrays.asList("http://brain-iot.org/index.xml"), null);
+    	Promise<InstallResponseDTO> promise = impl.installFunction("foo", "1.0.0", Arrays.asList("http://brain-iot.org/index.xml"), null, client);
     	
     	InstallResponseDTO value = promise.timeout(1000).getValue();
     	assertEquals(ResponseCode.BAD_REQUEST, value.code);
@@ -79,7 +83,7 @@ public class BundleInstallerImplTest {
 
     @Test
     public void testIndexesInvalid() throws Exception {
-    	Promise<InstallResponseDTO> promise = impl.installFunction("foo", "1.0.0",  singletonList("c:\\invalid"), singletonList(IDENTITY_REQUIREMENT));
+    	Promise<InstallResponseDTO> promise = impl.installFunction("foo", "1.0.0",  singletonList("c:\\invalid"), singletonList(IDENTITY_REQUIREMENT), client);
     	
     	InstallResponseDTO value = promise.timeout(1000).getValue();
     	assertEquals(ResponseCode.BAD_REQUEST, value.code);

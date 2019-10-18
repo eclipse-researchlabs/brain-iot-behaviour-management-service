@@ -16,11 +16,10 @@ import java.util.List;
 
 public class InstallerUtils {
 
-    public static InstallResponseDTO createResponse(InstallResponseDTO.ResponseCode code, List<String> messages, InstallRequestDTO installRequest) {
+    public static InstallResponseDTO createResponse(InstallResponseDTO.ResponseCode code, List<String> messages, InstallRequest installRequest) {
         InstallResponseDTO event = new InstallResponseDTO();
         event.code = code;
         event.messages = messages;
-        event.requestNode = installRequest.sourceNode;
         return event;
     }
 

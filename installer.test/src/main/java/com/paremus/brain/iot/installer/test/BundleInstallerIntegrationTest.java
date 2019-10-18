@@ -39,6 +39,8 @@ import org.osgi.util.promise.Promise;
 import com.paremus.brain.iot.management.api.BehaviourManagement;
 import com.paremus.brain.iot.management.api.ManagementResponseDTO;
 
+import aQute.bnd.http.HttpClient;
+import aQute.bnd.osgi.Processor;
 import aQute.bnd.osgi.resource.CapReqBuilder;
 import aQute.bnd.osgi.resource.ResourceUtils;
 import eu.brain.iot.eventing.api.EventBus;
@@ -56,6 +58,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
     private FunctionInstaller installer;
     private File resourceDir;
 	private TestDependencies deps;
+	private HttpClient client;
 
     @Before
     public void setUp() throws Exception {
@@ -70,6 +73,16 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
 
         String resources = System.getProperty("installer.test.resources", "src/main/resources");
         resourceDir = new File(resources);
+        
+        Processor processor = new Processor();
+    	processor.set(Processor.CONNECTION_SETTINGS, inCI() ? getCIConnectionSettings() : "");
+
+    	client = new HttpClient();
+    	client.setReporter(processor);
+    	client.setRegistry(processor);
+    	client.setCache(new File("target/test-cache"));
+
+    	client.readSettings(processor);
     }
     
     @After
@@ -137,8 +150,6 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
 
 	private void configureBMSAndInstaller(String indexLocation, String... preinstalled) throws IOException, InterruptedException {
 		// configure last_resort handler
-		boolean inCI = System.getenv("CI") != null;
-
 		Dictionary<String, Object> props = new Hashtable<>();
         props.put("indexes", indexLocation);
         
@@ -146,14 +157,14 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
         	props.put("preinstalled.behaviours", Arrays.asList(preinstalled));
         }
         
-		if(inCI) {
-        	props.put("connection.settings", System.getenv("CI_PROJECT_DIR") + "/.m2/settings.xml");
+		if(inCI()) {
+        	props.put("connection.settings", getCIConnectionSettings());
         }
 
         Configuration config = deps.configAdmin.getConfiguration("eu.brain.iot.BehaviourManagementService", "?");
         config.update(props);
         
-        if(inCI) {
+        if(inCI()) {
         	props.remove("indexes");
         	config = deps.configAdmin.getConfiguration("eu.brain.iot.BundleInstallerService", "?");
             config.update(props);
@@ -163,7 +174,15 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
         Thread.sleep(1000);
 	}
 
-    @Override
+	private boolean inCI() {
+		return System.getenv("CI") != null;
+	}
+
+	private String getCIConnectionSettings() {
+		return System.getenv("CI_PROJECT_DIR") + "/.m2/settings.xml";
+	}
+
+	@Override
     public void notify(ManagementResponseDTO response) {
         System.err.printf("TEST response code=%s \n", response.code);
         queue.add(response);
@@ -196,7 +215,8 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
          */
 
         Promise<InstallResponseDTO> promise = installer.installFunction("test.example", "1.0.0", index1, 
-        		asList(createBundleRequirement("com.paremus.brain.iot.example.behaviour.impl", "9.9.9")));
+        		asList(createBundleRequirement("com.paremus.brain.iot.example.behaviour.impl", "9.9.9")),
+        		client);
 
         response = promise.timeout(10000).getValue();
         assertEquals(ResponseCode.FAIL, response.code);
@@ -208,7 +228,8 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
         promise = installer.installFunction("Install-Example-1", "1", index1, 
         		asList(createBundleRequirement("com.paremus.brain.iot.example.behaviour.impl", "0.0.0"),
         				createBundleRequirement("com.paremus.brain.iot.example.light.impl", "0.0.1"),
-        				createBundleRequirement("com.paremus.brain.iot.example.sensor.impl", "(0.0.1,0.0.2]")));
+        				createBundleRequirement("com.paremus.brain.iot.example.sensor.impl", "(0.0.1,0.0.2]")),
+        		client);
         
         response = promise.timeout(10000).getValue();
         List<String> fw1 = TestUtils.listBundles(context);
@@ -225,7 +246,8 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
         promise = installer.updateFunction("Install-Example-1", "1", "Bad Update Example-2", "2", index2bad, 
         		asList(createBundleRequirement("com.paremus.brain.iot.example.behaviour.impl", "0.0.2"),
         				createBundleRequirement("com.paremus.brain.iot.example.light.impl", "0.0.2"),
-        				createBundleRequirement("com.paremus.brain.iot.example.sensor.impl",  "(0.0.2,0.0.3]")));
+        				createBundleRequirement("com.paremus.brain.iot.example.sensor.impl",  "(0.0.2,0.0.3]")),
+        		client);
         
         response = promise.timeout(10000).getValue();
         List<String> fw2 = TestUtils.listBundles(context);
@@ -241,7 +263,8 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
         promise = installer.updateFunction("Install-Example-1", "1", "Install-Example-2", "2", index2, 
         		asList(createBundleRequirement("com.paremus.brain.iot.example.behaviour.impl", "0.0.2"),
         				createBundleRequirement("com.paremus.brain.iot.example.light.impl", "0.0.2"),
-        				createBundleRequirement("com.paremus.brain.iot.example.sensor.impl", "(0.0.2,0.0.3]")));
+        				createBundleRequirement("com.paremus.brain.iot.example.sensor.impl", "(0.0.2,0.0.3]")),
+        		client);
         
         response = promise.timeout(10000).getValue();
         TestUtils.listBundles(context);

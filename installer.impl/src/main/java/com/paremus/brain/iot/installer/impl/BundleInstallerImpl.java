@@ -34,6 +34,7 @@ import org.osgi.resource.Resource;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Deactivate;
+import org.osgi.service.component.annotations.Modified;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.log.FormatterLogger;
@@ -45,7 +46,7 @@ import org.osgi.util.promise.Deferred;
 import org.osgi.util.promise.Promise;
 import org.osgi.util.promise.PromiseFactory;
 
-import com.paremus.brain.iot.installer.impl.InstallRequestDTO.InstallAction;
+import com.paremus.brain.iot.installer.impl.InstallRequest.InstallAction;
 
 import aQute.bnd.header.Parameters;
 import aQute.bnd.http.HttpClient;
@@ -77,17 +78,13 @@ public class BundleInstallerImpl implements FunctionInstaller {
 
     private final AtomicBoolean running = new AtomicBoolean(true);
 
-    private final BlockingQueue<InstallRequestDTO> queue = new LinkedBlockingQueue<>();
+    private final BlockingQueue<InstallRequest> queue = new LinkedBlockingQueue<>();
 
     private final PromiseFactory promiseFactory = new PromiseFactory(null);
 
     private BundleContext context;
 
     private Thread thread;
-
-	private HttpClient client;
-
-	private Processor processor;
 
 	private File httpCacheDir;
 
@@ -96,8 +93,8 @@ public class BundleInstallerImpl implements FunctionInstaller {
         description = "Configuration for the Bundle Installer"
     )
     public @interface Config {
-		@AttributeDefinition(description="Connection settings file for index and bundle download", defaultValue="")
-    	public String connection_settings() default "";
+		@AttributeDefinition(description="The cache folder for downloaded bundles and indexes")
+		String cache_location() default "";
     }
 
 
@@ -106,17 +103,6 @@ public class BundleInstallerImpl implements FunctionInstaller {
         this.context = context;
         httpCacheDir = context.getDataFile("httpcache");
 
-        processor = new Processor();
-        processor.set(Processor.CONNECTION_SETTINGS, config.connection_settings());
-
-    	client = new HttpClient();
-		client.setReporter(processor);
-		client.setRegistry(processor);
-		client.setCache(httpCacheDir);
-
-		client.readSettings(processor);
-
-		processor.addBasicPlugin(client);
         start();
     }
 
@@ -124,6 +110,10 @@ public class BundleInstallerImpl implements FunctionInstaller {
     synchronized void start() {
         thread = new InstallerThread();
         thread.start();
+    }
+    
+    @Modified
+    synchronized void modified() {
     }
 
     @Deactivate
@@ -138,22 +128,21 @@ public class BundleInstallerImpl implements FunctionInstaller {
             thread.join(2000);
         } catch (InterruptedException e) {
         }
-
-        client.close();
     }
 
     @Override
 	public Promise<InstallResponseDTO> installFunction(String symbolicName, String version, List<String> indexes,
-			List<String> requirements) {
+			List<String> requirements, HttpClient client) {
 		Deferred<InstallResponseDTO> response = promiseFactory.deferred();
 		
 		try {
-			InstallRequestDTO dto = new InstallRequestDTO();
+			InstallRequest dto = new InstallRequest();
 			dto.action = InstallAction.INSTALL;
 			if(indexes != null) dto.indexes.addAll(indexes);
 			if(requirements != null) dto.requirements.addAll(requirements);
 			dto.response = response;
 			dto.sponsor = symbolicName + ":" + ((version == null) ? "0.0.0" : version);
+			dto.client = client;
 			
 			queue.add(dto);
 		} catch (Exception e) {
@@ -165,17 +154,19 @@ public class BundleInstallerImpl implements FunctionInstaller {
 
     @Override
     public Promise<InstallResponseDTO> updateFunction(String oldSymbolicName, String oldVersion, 
-    		String newSymbolicName, String newVersion, List<String> indexes, List<String> requirements) {
+    		String newSymbolicName, String newVersion, List<String> indexes, 
+    		List<String> requirements, HttpClient client) {
     	Deferred<InstallResponseDTO> response = promiseFactory.deferred();
     	
     	try {
-    		InstallRequestDTO dto = new InstallRequestDTO();
+    		InstallRequest dto = new InstallRequest();
     		dto.action = InstallAction.UPDATE;
     		if(indexes != null) dto.indexes.addAll(indexes);
 			if(requirements != null) dto.requirements.addAll(requirements);
     		dto.response = response;
     		dto.oldSponsor = oldSymbolicName + ":" + ((oldVersion == null) ? "0.0.0" : oldVersion);
     		dto.sponsor = newSymbolicName + ":" + ((newVersion == null) ? "0.0.0" : newVersion);
+    		dto.client = client;
     		
     		queue.add(dto);
     	} catch (Exception e) {
@@ -190,7 +181,7 @@ public class BundleInstallerImpl implements FunctionInstaller {
 		Deferred<InstallResponseDTO> response = promiseFactory.deferred();
 		
 		try {
-			InstallRequestDTO dto = new InstallRequestDTO();
+			InstallRequest dto = new InstallRequest();
 			dto.action = InstallAction.UNINSTALL;
 			dto.response = response;
 			dto.sponsor = symbolicName + ":" + version;
@@ -216,7 +207,7 @@ public class BundleInstallerImpl implements FunctionInstaller {
 		Deferred<InstallResponseDTO> response = promiseFactory.deferred();
 		
 		try {
-			InstallRequestDTO dto = new InstallRequestDTO();
+			InstallRequest dto = new InstallRequest();
 			dto.action = InstallAction.RESET;
 			dto.response = response;
 			
@@ -230,7 +221,7 @@ public class BundleInstallerImpl implements FunctionInstaller {
 	}
 
     // package access for Mockito
-    void sendResponse(ResponseCode code, String message, InstallRequestDTO request) {
+    void sendResponse(ResponseCode code, String message, InstallRequest request) {
         if (log != null)
             log.info("sendResponse: code=%s message=%s\n", code, message);
         // Force a thread switch to release the installer thread
@@ -238,7 +229,7 @@ public class BundleInstallerImpl implements FunctionInstaller {
         	request.response.resolve(InstallerUtils.createResponse(code, Collections.singletonList(message), request)));
     }
 
-    private void sendResponse(ResponseCode code, List<String> messages, InstallRequestDTO request) {
+    private void sendResponse(ResponseCode code, List<String> messages, InstallRequest request) {
         if (log != null)
             log.info("sendResponse: code=%s messages=%s\n", code, messages);
         // Force a thread switch to release the installer thread
@@ -246,10 +237,10 @@ public class BundleInstallerImpl implements FunctionInstaller {
     		request.response.resolve(InstallerUtils.createResponse(code, messages, request)));
     }
 
-    private List<String> uninstall(InstallRequestDTO request) throws Exception {
+    private List<String> uninstall(InstallRequest request) throws Exception {
         List<Bundle> uninstalled = new ArrayList<>();
 
-        if (request.action.equals(InstallRequestDTO.InstallAction.UNINSTALL)) {
+        if (request.action.equals(InstallRequest.InstallAction.UNINSTALL)) {
             String sponsor = request.sponsor;
             if (sponsor == null || sponsor.isEmpty()) {
                 throw new BadRequestException("deployment symbolic name not set");
@@ -270,8 +261,8 @@ public class BundleInstallerImpl implements FunctionInstaller {
         return uninstalled.stream().map(b -> b.toString()).collect(Collectors.toList());
     }
 
-    private List<String> install(InstallRequestDTO request) throws Exception {
-        final boolean update = request.action.equals(InstallRequestDTO.InstallAction.UPDATE);
+    private List<String> install(InstallRequest request) throws Exception {
+        final boolean update = request.action.equals(InstallRequest.InstallAction.UPDATE);
         final String sponsor = request.sponsor;
 
         if (sponsor == null || sponsor.isEmpty()) {
@@ -336,7 +327,7 @@ public class BundleInstallerImpl implements FunctionInstaller {
             } else {
                 rollbacks.add(0, () -> {
                     debug("ROLLBACK uninstall");
-                    List<Bundle> bundles = installer.addLocations(oldSponsor, oldLocs, client);
+                    List<Bundle> bundles = installer.addLocations(oldSponsor, oldLocs, request.client);
                     for (Bundle b : bundles) {
                         if (!isFragment(b)) {
                             b.start();
@@ -355,7 +346,7 @@ public class BundleInstallerImpl implements FunctionInstaller {
                 return null;
             });
 
-            List<Bundle> installed = installer.addLocations(sponsor, locations, client);
+            List<Bundle> installed = installer.addLocations(sponsor, locations, request.client);
 
             for (Bundle b : installed) {
                 if (!isFragment(b)) {
@@ -402,7 +393,7 @@ public class BundleInstallerImpl implements FunctionInstaller {
         return (bundle.adapt(BundleRevision.class).getTypes() & BundleRevision.TYPE_FRAGMENT) > 0;
     }
 
-    private List<OSGiRepository> getRepositories(InstallRequestDTO request) throws Exception  {
+    private List<OSGiRepository> getRepositories(InstallRequest request) throws Exception  {
 
     	if (request.indexes == null || request.indexes.isEmpty()) {
             throw new BadRequestException("no indexes in request");
@@ -417,9 +408,11 @@ public class BundleInstallerImpl implements FunctionInstaller {
             throw new BadRequestException("indexes contains invalid URI: " + e);
         }
 
-		List<OSGiRepository> repositories = new ArrayList<>(indexes.size());
+    	Processor processor = new Processor();
+    	processor.addBasicPlugin(request.client);
+    	
+    	List<OSGiRepository> repositories = new ArrayList<>(indexes.size());
 		for(URI index : indexes) {
-
 			OSGiRepository repo = new OSGiRepository();
 			repo.setReporter(processor);
 			repo.setRegistry(processor);
@@ -437,7 +430,7 @@ public class BundleInstallerImpl implements FunctionInstaller {
 		return repositories;
     }
 
-    List<Requirement> getRequirements(InstallRequestDTO request) throws BadRequestException {
+    List<Requirement> getRequirements(InstallRequest request) throws BadRequestException {
         List<Requirement> requirements = new ArrayList<>();
 
         try {
@@ -472,7 +465,7 @@ public class BundleInstallerImpl implements FunctionInstaller {
         @Override
         public void run() {
             while (running.get()) {
-                InstallRequestDTO request = null;
+                InstallRequest request = null;
 
                 try {
                     request = queue.take();
