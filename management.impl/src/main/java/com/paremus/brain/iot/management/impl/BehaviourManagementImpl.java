@@ -453,6 +453,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
     	ManagementInstallRequestDTO request = new ManagementInstallRequestDTO();
 
     	request.targetNode = targetNode;
+    	request.requestIdentity = "reset:*";
     	request.action = ManagementInstallAction.RESET;
 
     	eventBus.deliver(request);
@@ -706,14 +707,21 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
                     }
                 } catch (Exception e) {
                     if (running.get()) {
-                        failedAction(request, e);
+                    	try {
+                    		failedAction(request, e);
+                    	} catch (Exception e2) {
+                    		log.error("An error occurred notifying of an error", e2);
+                    		// Just in case
+                    	}
                     }
                 }
             }
         }
 
 		private void failedAction(ManagementDTO request, Throwable t) {
-        	pendingInstall.remove(request.requestIdentity, request.sourceNode);
+			if(request.requestIdentity != null) {
+				pendingInstall.remove(request.requestIdentity, request.sourceNode);
+			}
         	log.warn("Failed to process action(%s) event(%s): %s", request.getClass().getSimpleName(),
         			request.requestIdentity, t.getMessage(), t);
         	ManagementResponseDTO response = new ManagementResponseDTO();
