@@ -163,15 +163,8 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
 
         Configuration config = deps.configAdmin.getConfiguration("eu.brain.iot.BehaviourManagementService", "?");
         config.update(props);
-        
-        if(inCI()) {
-        	props.remove("indexes");
-        	config = deps.configAdmin.getConfiguration("eu.brain.iot.BundleInstallerService", "?");
-            config.update(props);
-        }
-        
-        
-        Thread.sleep(1000);
+
+        Thread.sleep(3000);
 	}
 
 	private boolean inCI() {
@@ -315,7 +308,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
     	assertEquals("0.0.1.SNAPSHOT", response.version);
     	
 
-    	response = queue.poll(30, TimeUnit.SECONDS);
+    	response = queue.poll(60, TimeUnit.SECONDS);
     	bundles = TestUtils.listBundles(context);
     	
     	assertTrue(response != null);
@@ -327,7 +320,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
     	assertEquals("com.paremus.brain.iot.example.light.impl", response.symbolicName);
     	assertEquals("0.0.1.SNAPSHOT", response.version);
     	
-    	response = queue.poll(30, TimeUnit.SECONDS);
+    	response = queue.poll(60, TimeUnit.SECONDS);
     	bundles = TestUtils.listBundles(context);
     	
     	assertTrue(response != null);
@@ -345,7 +338,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
     			"com.paremus.brain.iot.example.behaviour.impl:0.0.1.SNAPSHOT");
 
     	boolean installed = false;
-    	for(int i = 0; i < 30; i++) {
+    	for(int i = 0; i < 60; i++) {
     		if(installer.listInstalledFunctions().isEmpty()) {
     			Thread.sleep(1000);
     		} else {
@@ -367,7 +360,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
     	assertEquals("com.paremus.brain.iot.example.light.impl", response.symbolicName);
     	assertEquals("0.0.1.SNAPSHOT", response.version);
     	
-    	response = queue.poll(30, TimeUnit.SECONDS);
+    	response = queue.poll(60, TimeUnit.SECONDS);
     	bundles = TestUtils.listBundles(context);
     	
     	assertTrue(response != null);
