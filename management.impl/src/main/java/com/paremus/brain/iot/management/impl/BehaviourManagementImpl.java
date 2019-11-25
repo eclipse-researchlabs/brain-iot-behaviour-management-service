@@ -505,24 +505,28 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         }
     }
 
-    void installComplete(String requestIdentity, InstallResponseDTO response) {
-        String target = pendingInstall.remove(requestIdentity);
+    void installComplete(ManagementDTO request, InstallResponseDTO response) {
+        String target = pendingInstall.remove(request.requestIdentity);
         if (target == null) {
-            debug("Ignore InstallResponse that we did not initiate: %s", requestIdentity);
+            debug("Ignore InstallResponse that we did not initiate: %s", request.requestIdentity);
             return;
         }
 
         ManagementResponseDTO mr = new ManagementResponseDTO();
         mr.targetNode = target;
-        mr.requestIdentity = requestIdentity;
+        mr.requestIdentity = request.requestIdentity;
 
         if (response.code.equals(ResponseCode.SUCCESS)) {
             mr.code = ManagementResponseDTO.ResponseCode.INSTALL_OK;
+            mr.message = String.format("Successfully installed %s at version %s", 
+            		request.symbolicName, request.version);
             eventBus.deliver(mr);
 
         } else {
-            warn("Failed to install requirement for eventType(%s): %s", requestIdentity, response.messages);
+            warn("Failed to install requirement for eventType(%s): %s", 
+            		request.requestIdentity, response.messages);
             mr.code = ManagementResponseDTO.ResponseCode.FAIL;
+            mr.message = response.messages.stream().collect(Collectors.joining(",\n"));
             eventBus.deliver(mr);
         }
     }
@@ -679,7 +683,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
                     	}
                     	final ManagementDTO req = request;
-                    	p.thenAccept(v -> installComplete(requestIdentity, v))
+                    	p.thenAccept(v -> installComplete(req, v))
                     		.onFailure(t -> failedAction(req, t));
                     } else if (request instanceof ManagementBidRequestDTO) {
 
@@ -728,6 +732,8 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
             response.code = ManagementResponseDTO.ResponseCode.FAIL;
             response.requestIdentity = request.requestIdentity;
             response.targetNode = request.sourceNode;
+            response.message = String.format("Failed request of type %s for %s at version %s because: %s",
+            		request.getClass().getSimpleName(), request.symbolicName, request.version, t.getMessage());
             eventBus.deliver(response);
         }
     }

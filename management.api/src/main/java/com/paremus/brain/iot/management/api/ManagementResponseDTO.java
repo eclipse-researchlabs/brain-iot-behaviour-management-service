@@ -34,5 +34,7 @@ public class ManagementResponseDTO extends TargettedManagementDTO {
     public ResponseCode code;
 
     public Integer bid;
+    
+    public String message;
 
 }
