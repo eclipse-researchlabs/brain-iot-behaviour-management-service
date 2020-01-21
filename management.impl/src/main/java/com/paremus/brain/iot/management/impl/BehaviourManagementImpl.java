@@ -43,6 +43,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import com.paremus.brain.iot.management.api.*;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
 import org.osgi.framework.ServiceRegistration;
@@ -66,12 +67,7 @@ import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 import org.osgi.util.promise.Promise;
 import org.osgi.util.promise.Promises;
 
-import com.paremus.brain.iot.management.api.BehaviourManagement;
-import com.paremus.brain.iot.management.api.ManagementBidRequestDTO;
-import com.paremus.brain.iot.management.api.ManagementDTO;
-import com.paremus.brain.iot.management.api.ManagementInstallRequestDTO;
 import com.paremus.brain.iot.management.api.ManagementInstallRequestDTO.ManagementInstallAction;
-import com.paremus.brain.iot.management.api.ManagementResponseDTO;
 
 import aQute.bnd.header.Parameters;
 import aQute.bnd.http.HttpClient;
@@ -95,7 +91,7 @@ import eu.brain.iot.installer.api.InstallResponseDTO.ResponseCode;
 )
 @ExportedService(service_exported_interfaces=BehaviourManagement.class)
 @Designate(ocd=BehaviourManagementImpl.Config.class)
-@SmartBehaviourDefinition(consumed = {ManagementBidRequestDTO.class},
+@SmartBehaviourDefinition(consumed = {ManagementBidRequestDTO.class, ManagementBlacklistDTO.class},
         filter = "(requestIdentity=*)",
         author = BehaviourManagementImpl.BEHAVIOUR_AUTHOR,
         name = BehaviourManagementImpl.BEHAVIOUR_NAME,
@@ -159,6 +155,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
     private final Map<String, String> pendingInstall = new ConcurrentHashMap<>();
 
     private final Map<String, Long> blacklist = new ConcurrentHashMap<>();
+    private final Map<String, String> bundle2lastresort = new ConcurrentHashMap<>();
 
     private List<URI> indexes = new ArrayList<>();
 
@@ -508,7 +505,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
         }
     }
 
-    void installComplete(ManagementDTO request, InstallResponseDTO response) {
+    void installComplete(ManagementInstallRequestDTO request, InstallResponseDTO response) {
         String target = pendingInstall.remove(request.requestIdentity);
         if (target == null) {
             debug("Ignore InstallResponse that we did not initiate: %s", request.requestIdentity);
@@ -521,13 +518,19 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
         if (response.code.equals(ResponseCode.SUCCESS)) {
             mr.code = ManagementResponseDTO.ResponseCode.INSTALL_OK;
-            mr.message = String.format("Successfully installed %s at version %s", 
-            		request.symbolicName, request.version);
+            mr.message = String.format("%s success for %s at version %s",
+            		request.action, request.symbolicName, request.version);
             eventBus.deliver(mr);
 
+            if (request.action == ManagementInstallAction.UNINSTALL) {
+                ManagementBlacklistDTO mbl = new ManagementBlacklistDTO();
+                mbl.uninstalled = response.messages;
+                eventBus.deliver(mr);
+            }
+
         } else {
-            warn("Failed to install requirement for eventType(%s): %s", 
-            		request.requestIdentity, response.messages);
+            warn("Failed to %s requirement for eventType(%s): %s",
+            		request.action, request.requestIdentity, response.messages);
             mr.code = ManagementResponseDTO.ResponseCode.FAIL;
             mr.message = response.messages.stream().collect(Collectors.joining(",\n"));
             eventBus.deliver(mr);
@@ -572,6 +575,9 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
             request.symbolicName = getSymbolicName(resource, identity);
             request.version = getVersion(resource);
             eventBus.deliver(request);
+
+            String installstr = request.symbolicName + "_" + request.version;
+            bundle2lastresort.put(installstr, identity);
         }
     }
 
@@ -682,9 +688,21 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 								break;
 
                     	}
-                    	final ManagementDTO req = request;
-                    	p.thenAccept(v -> installComplete(req, v))
-                    		.onFailure(t -> failedAction(req, t));
+                    	p.thenAccept(v -> installComplete(installDTO, v))
+                    		.onFailure(t -> failedAction(installDTO, t));
+                    } else if (request instanceof ManagementBlacklistDTO) {
+                        List<String> uninstalled = ((ManagementBlacklistDTO) request).uninstalled;
+                        info("Blacklist uninstalled: %s", uninstalled);
+                        for (String bundlestr : uninstalled) {
+                            // e.g. slf4j.api_1.7.25 [17]
+                            String bundlever = bundlestr.replaceFirst(" .*", "");
+                            String lastresort = bundle2lastresort.remove(bundlever);
+                            if (lastresort != null) {
+                                if (blacklist.remove(lastresort) != null) {
+                                    info("Blacklist clear: %s", lastresort);
+                                }
+                            }
+                        }
                     } else if (request instanceof ManagementBidRequestDTO) {
 
                     	String identityRequirement = String.format(IDENTITY_FILTER, request.symbolicName, request.version);
