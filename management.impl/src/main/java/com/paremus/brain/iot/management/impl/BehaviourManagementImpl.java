@@ -741,6 +741,13 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
     void debug(String format, Object... args) {
         if (log != null) {
+            // Felix log bug: null elements of args are removed, resulting in MissingFormatArgumentException
+            if (args != null) {
+                for (int i = 0; i < args.length; i++) {
+                    if (args[i] == null)
+                        args[i] = "null";
+                }
+            }
             // FIXME: SCR is logging DEBUG on our loggers!
             log.info(format, args);
         } else {
