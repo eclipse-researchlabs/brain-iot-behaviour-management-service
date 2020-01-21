@@ -106,6 +106,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 	private static final String SMART_BEHAVIOUR_FILTER = SMART_BEHAVIOUR_NAMESPACE +
 			";filter:=\"(consumed=%s)\"";
 
+    private static final String LAST_RESORT_PREFIX = "LastResort:";
 
 	static final String BEHAVIOUR_AUTHOR = "Paremus";
     static final String BEHAVIOUR_NAME = "[Brain-IoT] Behaviour Management Service";
@@ -492,7 +493,9 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
                 break;
 
             case INSTALL_OK:
-                blacklist.put(requestIdentity, 0L);   // flag install ok
+                if (requestIdentity.startsWith(LAST_RESORT_PREFIX)) {
+                    blacklist.put(requestIdentity, 0L);   // flag last_resort install ok
+                }
                 List<UntypedEvent> events = inProgress.remove(requestIdentity);
 
                 if (events != null) {
@@ -535,7 +538,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
     void notifyLastResort(String eventType, Map<String, ?> properties) {
 
-    	String identity = "LastResort:" + eventType;
+    	String identity = LAST_RESORT_PREFIX + eventType;
         List<UntypedEvent> pendingEvents = inProgress.get(identity);
 
         UntypedEvent event = new UntypedEvent();
@@ -655,9 +658,6 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
                 try {
                     request = queue.take();
                     String requestIdentity = request.requestIdentity;
-
-                    // reject any more events of this type
-                    blacklist.put(requestIdentity, System.currentTimeMillis());
 
                     if(request instanceof ManagementInstallRequestDTO) {
                     	ManagementInstallRequestDTO installDTO = (ManagementInstallRequestDTO) request;
