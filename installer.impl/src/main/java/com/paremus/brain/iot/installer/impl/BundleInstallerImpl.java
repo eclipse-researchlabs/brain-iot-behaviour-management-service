@@ -203,15 +203,15 @@ public class BundleInstallerImpl implements FunctionInstaller {
 
 	@Override
 	public Promise<InstallResponseDTO> resetNode() {
-		log.info("Resetting the node %s", context.getProperty(FRAMEWORK_UUID));
+        info("Resetting the node %s", context.getProperty(FRAMEWORK_UUID));
 		Deferred<InstallResponseDTO> response = promiseFactory.deferred();
 		
 		try {
 			InstallRequest dto = new InstallRequest();
 			dto.action = InstallAction.RESET;
 			dto.response = response;
-			
-			log.info("Adding reset request to queue");
+
+            info("Adding reset request to queue");
 			queue.add(dto);
 		} catch (Exception e) {
 			response.fail(e);
@@ -222,16 +222,14 @@ public class BundleInstallerImpl implements FunctionInstaller {
 
     // package access for Mockito
     void sendResponse(ResponseCode code, String message, InstallRequest request) {
-        if (log != null)
-            log.info("sendResponse: code=%s message=%s\n", code, message);
+        info("sendResponse: code=%s message=%s\n", code, message);
         // Force a thread switch to release the installer thread
         promiseFactory.executor().execute(() ->
         	request.response.resolve(InstallerUtils.createResponse(code, Collections.singletonList(message), request)));
     }
 
     private void sendResponse(ResponseCode code, List<String> messages, InstallRequest request) {
-        if (log != null)
-            log.info("sendResponse: code=%s messages=%s\n", code, messages);
+        info("sendResponse: code=%s messages=%s\n", code, messages);
         // Force a thread switch to release the installer thread
         promiseFactory.executor().execute(() ->
     		request.response.resolve(InstallerUtils.createResponse(code, messages, request)));
@@ -245,13 +243,13 @@ public class BundleInstallerImpl implements FunctionInstaller {
             if (sponsor == null || sponsor.isEmpty()) {
                 throw new BadRequestException("deployment symbolic name not set");
             }
-            
-            log.info("Uninstalling %s", sponsor);
+
+            info("Uninstalling %s", sponsor);
 
             uninstalled.addAll(installer.removeSponsor(sponsor));
         } else {
             Set<Object> sponsors = installer.getSponsors();
-            log.info("Resetting node %s by removing %s", context.getProperty(FRAMEWORK_UUID), sponsors);
+            info("Resetting node %s by removing %s", context.getProperty(FRAMEWORK_UUID), sponsors);
 
             for(Object sponsor : sponsors) {
                 uninstalled.addAll(installer.removeSponsor(sponsor));
@@ -447,19 +445,39 @@ public class BundleInstallerImpl implements FunctionInstaller {
         return requirements;
     }
 
+    Object[] fixArgs(Object... args) {
+        // Felix log bug: null elements of args are removed, resulting in MissingFormatArgumentException
+        if (args != null) {
+            for (int i = 0; i < args.length; i++) {
+                if (args[i] == null)
+                    args[i] = "null";
+            }
+        }
+        return args;
+    }
+
     void debug(String format, Object... args) {
         if (log != null) {
-            // Felix log bug: null elements of args are removed, resulting in MissingFormatArgumentException
-            if (args != null) {
-                for (int i = 0; i < args.length; i++) {
-                    if (args[i] == null)
-                        args[i] = "null";
-                }
-            }
             // FIXME: SCR is logging DEBUG on our loggers!
-            log.info(format, args);
+            log.info(format, fixArgs(args));
         } else {
             System.err.printf("BI:DEBUG:" + format + "\n", args);
+        }
+    }
+
+    void info(String format, Object... args) {
+        if (log != null) {
+            log.info(format, fixArgs(args));
+        } else {
+            System.err.printf("BI:INFO:" + format + "\n", args);
+        }
+    }
+
+    void warn(String format, Object... args) {
+        if (log != null) {
+            log.warn(format, fixArgs(args));
+        } else {
+            System.err.printf("BI:WARN:" + format + "\n", args);
         }
     }
 
@@ -502,8 +520,7 @@ public class BundleInstallerImpl implements FunctionInstaller {
                     sendResponse(ResponseCode.BAD_REQUEST, e.getMessage(), request);
                 } catch (Exception e) {
                     if (running.get()) {
-                        if (log != null)
-                            log.warn("request %s failed: %s", request.action, e.toString(), e);
+                        warn("request %s failed: %s", request.action, e.toString(), e);
                         sendResponse(ResponseCode.FAIL, e.toString(), request);
                     }
                 }

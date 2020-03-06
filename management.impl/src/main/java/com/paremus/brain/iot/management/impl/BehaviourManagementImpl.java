@@ -603,7 +603,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 			throw new RuntimeException("No resource suitable for " + request);
 		} else if (found.size() > 1) {
 			// TODO alert too many matching resources
-			throw new RuntimeException("Too many resources suitable for " + request);
+			warn("Multiple resources suitable for request %s", request);
 		}
 
 		return found.get(0);
@@ -732,7 +732,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
                     	try {
                     		failedAction(request, e);
                     	} catch (Exception e2) {
-                    		log.error("An error occurred notifying of an error", e2);
+                    		error("An error occurred notifying of an error", e2);
                     		// Just in case
                     	}
                     }
@@ -744,7 +744,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 			if(request.requestIdentity != null) {
 				pendingInstall.remove(request.requestIdentity, request.sourceNode);
 			}
-        	log.warn("Failed to process action(%s) event(%s): %s", request.getClass().getSimpleName(),
+        	warn("Failed to process action(%s) event(%s): %s", request.getClass().getSimpleName(),
         			request.requestIdentity, t.getMessage(), t);
         	ManagementResponseDTO response = new ManagementResponseDTO();
             response.code = ManagementResponseDTO.ResponseCode.FAIL;
@@ -757,17 +757,21 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
     }
 
 
+    Object[] fixArgs(Object... args) {
+        // Felix log bug: null elements of args are removed, resulting in MissingFormatArgumentException
+        if (args != null) {
+            for (int i = 0; i < args.length; i++) {
+                if (args[i] == null)
+                    args[i] = "null";
+            }
+        }
+        return args;
+    }
+
     void debug(String format, Object... args) {
         if (log != null) {
-            // Felix log bug: null elements of args are removed, resulting in MissingFormatArgumentException
-            if (args != null) {
-                for (int i = 0; i < args.length; i++) {
-                    if (args[i] == null)
-                        args[i] = "null";
-                }
-            }
             // FIXME: SCR is logging DEBUG on our loggers!
-            log.info(format, args);
+            log.info(format, fixArgs(args));
         } else {
             System.err.printf("BMS:DEBUG:" + format + "\n", args);
         }
@@ -775,7 +779,7 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
     void info(String format, Object... args) {
         if (log != null) {
-            log.info(format, args);
+            log.info(format, fixArgs(args));
         } else {
             System.err.printf("BMS:INFO:" + format + "\n", args);
         }
@@ -783,9 +787,17 @@ public class BehaviourManagementImpl implements SmartBehaviour<ManagementBidRequ
 
     void warn(String format, Object... args) {
         if (log != null) {
-            log.warn(format, args);
+            log.warn(format, fixArgs(args));
         } else {
             System.err.printf("BMS:WARN:" + format + "\n", args);
+        }
+    }
+
+    void error(String format, Object... args) {
+        if (log != null) {
+            log.error(format, fixArgs(args));
+        } else {
+            System.err.printf("BMS:ERROR:" + format + "\n", args);
         }
     }
 
