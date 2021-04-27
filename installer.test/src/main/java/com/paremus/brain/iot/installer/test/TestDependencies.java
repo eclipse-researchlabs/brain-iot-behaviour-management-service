@@ -10,13 +10,13 @@
 
 package com.paremus.brain.iot.installer.test;
 
-import eu.brain.iot.eventing.api.EventBus;
-import eu.brain.iot.installer.api.FunctionInstaller;
+import java.util.Collections;
 
 import org.osgi.framework.BundleContext;
 import org.osgi.service.cm.ConfigurationAdmin;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.log.LogEntry;
@@ -26,7 +26,8 @@ import org.osgi.service.log.LogReaderService;
 import org.osgi.service.log.admin.LoggerAdmin;
 import org.osgi.service.log.admin.LoggerContext;
 
-import java.util.Collections;
+import eu.brain.iot.eventing.api.EventBus;
+import eu.brain.iot.installer.api.FunctionInstaller;
 
 /**
  * Helper to allow DS to provide test dependencies
@@ -54,7 +55,7 @@ public class TestDependencies implements LogListener {
 
     BundleContext context;
 
-    private static TestDependencies instance;
+    private static volatile TestDependencies instance;
 
     @Activate
     private void activate(BundleContext context) {
@@ -68,6 +69,11 @@ public class TestDependencies implements LogListener {
 
         if (logReader != null)
             logReader.addLogListener(this);
+    }
+    
+    @Deactivate
+    private void deactivate() {
+    	TestDependencies.instance = null;
     }
 
     private final static int step = 100;
