@@ -18,19 +18,20 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.BundleException;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.log.FormatterLogger;
@@ -44,7 +45,7 @@ public class FrameworkInstallerImpl implements FrameworkInstaller {
     @Reference(service = LoggerFactory.class, cardinality = ReferenceCardinality.OPTIONAL)
     private FormatterLogger log;
 
-    private final Map<Long, Set<Object>> bundleSponsors = new HashMap<>();
+    private final Map<Long, Set<Object>> bundleSponsors = new ConcurrentHashMap<>();
     private BundleContext context;
 
     @Activate
@@ -52,6 +53,23 @@ public class FrameworkInstallerImpl implements FrameworkInstaller {
         this.context = context;
     }
 
+    @Deactivate
+    void deactivate(BundleContext context) {
+    	bundleSponsors.keySet().stream()
+    		.map(context::getBundle)
+    		.forEach(this::safeUninstall);
+    }
+
+    private void safeUninstall(Bundle b) {
+    	if(b != null) {
+    		try {
+    			b.uninstall();
+    		} catch (BundleException be) {
+    			log.debug("The bundle %s %s threw an exception on uninstallation", b.getSymbolicName(), b.getVersion(), be);
+    		}
+    	}
+    }
+    
     @Override
     public synchronized Set<Object> getSponsors() {
     	return bundleSponsors.values().stream().flatMap(Set::stream).collect(toSet());

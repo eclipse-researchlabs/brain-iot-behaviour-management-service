@@ -15,6 +15,7 @@ import static java.util.Arrays.asList;
 import static java.util.Collections.singletonMap;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
@@ -29,6 +30,7 @@ import java.util.Dictionary;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +38,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceReference;
 import org.osgi.service.cm.Configuration;
@@ -371,6 +374,51 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
     	assertTrue(response != null);
     	assertEquals(ManagementResponseDTO.ResponseCode.INSTALL_OK, response.code);
     	assertTrue(bundles.stream().anyMatch(s -> s.contains("example.light.impl")));
+    	
+    	pause("test last resort");
+    }
+
+    @Test
+    public void testInstallationRemovedOnBMSStop() throws Exception {
+    	
+    	// This is the "official" example marketplace
+    	configureBMSAndInstaller("https://nexus.repository-pert.ismb.it/repository/marketplaces/com.paremus.brain.iot.marketplace/security-light-marketplace/0.0.1-SNAPSHOT/index.xml",
+    			"com.paremus.brain.iot.example.behaviour.impl:0.0.1.SNAPSHOT");
+    	
+    	boolean installed = false;
+    	for(int i = 0; i < 60; i++) {
+    		if(installer.listInstalledFunctions().isEmpty()) {
+    			Thread.sleep(1000);
+    		} else {
+    			installed = true;
+    			break;
+    		}
+    	}
+    	
+    	assertTrue("Preinstalled behaviour was missing", installed);
+    	
+    	Optional<Bundle> bundle = Arrays.stream(context.getBundles())
+    		.filter(b -> "com.paremus.brain.iot.example.behaviour.impl".equals(b.getSymbolicName()))
+    		.findFirst();
+    	
+    	assertTrue(bundle.isPresent());
+    	
+    	long id = bundle.get().getBundleId();
+
+    	Optional<Bundle> installerBundle = Arrays.stream(context.getBundles())
+    			.filter(b -> "com.paremus.brain.iot.installer.impl".equals(b.getSymbolicName()))
+    			.findFirst();
+    	
+    	assertTrue(installerBundle.isPresent());
+    	
+    	installerBundle.get().stop();
+    	
+    	assertNull(context.getBundle(id));
+    	
+    	installerBundle.get().start();
+    	
+    	// Call setup again to reset the dependencies for teardown
+    	setUp();
     	
     	pause("test last resort");
     }
