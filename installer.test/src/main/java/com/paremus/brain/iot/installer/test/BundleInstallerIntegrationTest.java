@@ -409,7 +409,7 @@ public class BundleInstallerIntegrationTest implements SmartBehaviour<Management
     			.filter(b -> "com.paremus.brain.iot.installer.impl".equals(b.getSymbolicName()))
     			.findFirst();
     	
-    	assertTrue(bundle.isPresent());
+    	assertTrue(installerBundle.isPresent());
     	
     	installerBundle.get().stop();
     	
